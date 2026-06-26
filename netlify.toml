@@ -1,0 +1,18 @@
+# Netlify config for the Apollo Next.js app.
+# Place this at the directory Netlify treats as the site's "base".
+# If your Netlify "Base directory" is set to apollo-mockup-site, this file is
+# already in the right place. If your base is the repo root, move this file up
+# one level and set base = "apollo-mockup-site" below.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # Next 16 needs a modern Node. Pin it so local and Netlify match.
+  NODE_VERSION = "20"
+
+# The official Next.js runtime turns app/api routes into serverless functions
+# and reads `maxDuration` from your route segment config.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
