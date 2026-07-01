@@ -35,10 +35,19 @@ function seedFor(key) {
 // Material realism is all in the wording.
 // `{COLOR}` is replaced at request time with the garment color the user picked
 // (or `defaultColor` when they leave it on "Default").
+//
+// Every `model` prompt contains the exact phrase SCENE_SLOT below. When the user
+// turns the "Scene background" toggle OFF we leave it as-is (clean studio look);
+// when ON we swap it for the product's `scene` wording so the on-model shot gets
+// a lifestyle setting AND is framed wide enough to show the upper body.
+const SCENE_SLOT = "clean neutral background, shallow depth of field";
+
 const PRESETS = {
   "shirt-embroidered": {
     label: "Shirt — Embroidered",
     defaultColor: "heather-gray",
+    // Where an on-model shot is placed when the scene background is ON.
+    scene: "relaxed in a bright modern coffee shop, warm softly-blurred interior with plants behind",
     product:
       "Professional high-resolution e-commerce product photo of a {COLOR} cotton t-shirt laid flat, " +
       "this logo EMBROIDERED on the left chest. Realistic raised satin-stitch embroidery with visible " +
@@ -53,6 +62,7 @@ const PRESETS = {
   "shirt-screenprint": {
     label: "Shirt — Screen Print",
     defaultColor: "black",
+    scene: "walking on a sunny city street, softly-blurred urban storefronts and warm daylight behind",
     product:
       "Professional high-resolution e-commerce product photo of a {COLOR} cotton t-shirt laid flat, this logo " +
       "SCREEN PRINTED centered on the chest. Flat matte ink finish on the fabric surface, weave faintly " +
@@ -65,6 +75,7 @@ const PRESETS = {
   "hat-embroidered": {
     label: "Hat — Embroidered",
     defaultColor: "navy",
+    scene: "outdoors in a sunlit park, softly-blurred green trees and bright natural daylight behind",
     product:
       "Professional high-resolution e-commerce product photo, front view of a structured {COLOR} baseball cap, " +
       "this logo EMBROIDERED on the front panel. 3D puff embroidery with visible thread rows and raised " +
@@ -77,6 +88,7 @@ const PRESETS = {
   "beanie-embroidered": {
     label: "Beanie — Embroidered",
     defaultColor: "charcoal",
+    scene: "outdoors on a crisp autumn street, warm softly-blurred bokeh and golden light behind",
     product:
       "Professional high-resolution product photo of a folded {COLOR} knit beanie, this logo EMBROIDERED on " +
       "the cuff. Flat embroidery on ribbed knit fabric, thread texture visible against the wool. Studio " +
@@ -92,6 +104,18 @@ const PRESETS = {
 function withColor(template, color, defaultColor) {
   const c = (color && String(color).trim()) || defaultColor;
   return template.replaceAll("{COLOR}", c);
+}
+
+// Swap the clean-studio background for the product's lifestyle scene, and force a
+// waist-up crop so at least the full upper half of the body (and the garment) shows.
+// No-op when `scene` is falsy — the prompt keeps its original clean background.
+function withScene(modelTemplate, sceneOn, scene) {
+  if (!sceneOn || !scene) return modelTemplate;
+  return modelTemplate.replace(
+    SCENE_SLOT,
+    `${scene}, framed from at least the waist up so the full upper half of the model's body ` +
+      "and the garment are clearly visible, shallow depth of field"
+  );
 }
 
 async function generateOne(productKey, label, view, prompt, reference, seed) {
@@ -127,7 +151,7 @@ export async function POST(req) {
       return Response.json({ error: "Server is missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
-    const { logo, product, products, color } = await req.json();
+    const { logo, product, products, color, scene } = await req.json();
     if (!logo) return Response.json({ error: "No logo provided" }, { status: 400 });
 
     // Accept a single `product` (click-to-generate) or a `products` array; default to all.
@@ -144,7 +168,9 @@ export async function POST(req) {
       const p = PRESETS[k];
       const seed = seedFor(k); // same seed for both shots of this product
       const productPrompt = withColor(p.product, color, p.defaultColor);
-      const modelPrompt = withColor(p.model, color, p.defaultColor);
+      // The scene background only applies to the on-model shot; the product shot
+      // stays a clean e-commerce photo either way.
+      const modelPrompt = withScene(withColor(p.model, color, p.defaultColor), scene, p.scene);
       tasks.push(generateOne(k, p.label, "product", productPrompt, logo, seed));
       keysForTask.push({ productKey: k, label: p.label, view: "product" });
       tasks.push(generateOne(k, p.label, "model", modelPrompt, logo, seed));

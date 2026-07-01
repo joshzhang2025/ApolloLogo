@@ -36,6 +36,8 @@ const STRINGS = {
       "Drop in a logo, select products, then confirm to generate a clean product shot and an on-model shot for each.",
     selectProducts: "Select products",
     garmentColor: "Garment color",
+    sceneBackground: "Scene background",
+    sceneHint: "On-model shots get a lifestyle setting, framed from the waist up",
     uploadFirst: "Upload a logo first",
     uploadCta: "Click to upload or drag & drop your logo",
     uploadHint: "PNG, JPG, or SVG — transparent background works best",
@@ -58,6 +60,8 @@ const STRINGS = {
     subtitle: "上传 Logo，选择产品，然后点击确认，为每个产品生成一张产品图和一张模特上身图。",
     selectProducts: "选择产品",
     garmentColor: "服装颜色",
+    sceneBackground: "场景背景",
+    sceneHint: "模特上身图会带有生活场景，取景至腰部以上",
     uploadFirst: "请先上传 Logo",
     uploadCta: "点击上传或拖放您的 Logo",
     uploadHint: "PNG、JPG 或 SVG —— 透明背景效果最佳",
@@ -82,6 +86,7 @@ export default function Home() {
   const [logoName, setLogoName] = useState("");
   const [selected, setSelected] = useState([]); // product keys chosen for the next generation
   const [color, setColor] = useState(null); // garment color value, or null for each product's default
+  const [scene, setScene] = useState(false); // on-model shots get a lifestyle background when true
   const [loadingKeys, setLoadingKeys] = useState([]); // product keys currently generating
   const [resultsByKey, setResultsByKey] = useState({}); // key -> [result, result] (accumulates)
   const [error, setError] = useState("");
@@ -170,7 +175,7 @@ export default function Home() {
       const res = await fetch("/api/generate-mockups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logo, products: keys, color }),
+        body: JSON.stringify({ logo, products: keys, color, scene }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
@@ -338,6 +343,30 @@ export default function Home() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Scene background toggle — only affects the on-model shot */}
+          <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{t.sceneBackground}</h2>
+              <p className="mt-0.5 text-xs text-zinc-400">{t.sceneHint}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={scene}
+              aria-label={t.sceneBackground}
+              onClick={() => setScene((s) => !s)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                scene ? "bg-indigo-600" : "bg-zinc-300 dark:bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  scene ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
           </div>
 
           {/* Confirm button */}
