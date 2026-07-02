@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Apollo — Merch Mockup Generator",
-  description: "Upload a logo and instantly preview it embroidered and printed on real merch.",
+  title: "Apollo Studio — AI Merch Mockups",
+  description:
+    "Upload a logo and instantly preview it embroidered and printed on real merch — product shots, stitch close-ups, and on-model photos in seconds.",
 };
 
 export default function RootLayout({
