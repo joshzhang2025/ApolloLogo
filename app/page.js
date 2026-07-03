@@ -7,9 +7,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // `shots` mirrors the backend's views per product: embroidered items get a third
 // close-up shot (stitch detail is what gets approved on); screenprint gets two.
+// `placeable` marks products where the Pocket/Center placement choice applies —
+// only shirts. Hats (front panel) and beanies (cuff) have a fixed natural spot.
 const PRODUCTS = [
-  { key: "shirt-embroidered", label: "Shirt — Embroidered", labelZh: "T恤 · 刺绣", emoji: "👕", shots: 3 },
-  { key: "shirt-screenprint", label: "Shirt — Screen Print", labelZh: "T恤 · 丝网印刷", emoji: "🖨️", shots: 2 },
+  { key: "shirt-embroidered", label: "Shirt — Embroidered", labelZh: "T恤 · 刺绣", emoji: "👕", shots: 3, placeable: true },
+  { key: "shirt-screenprint", label: "Shirt — Screen Print", labelZh: "T恤 · 丝网印刷", emoji: "🖨️", shots: 2, placeable: true },
   { key: "hat-embroidered", label: "Hat — Embroidered", labelZh: "帽子 · 刺绣", emoji: "🧢", shots: 3 },
   { key: "beanie-embroidered", label: "Beanie — Embroidered", labelZh: "毛线帽 · 刺绣", emoji: "🧶", shots: 3 },
 ];
@@ -453,6 +455,12 @@ export default function Home() {
   const pendingKeySet = new Set(batches.flatMap((b) => (b.pending ? b.keys : [])));
   const hasAnyResults = batches.length > 0;
 
+  // Placement only applies to shirts. Show the control unless the current
+  // selection is exclusively hats/beanies (where it's meaningless).
+  const keysHavePlaceable = (keys) =>
+    keys.some((k) => PRODUCTS.find((p) => p.key === k)?.placeable);
+  const showPlacement = selected.length === 0 || keysHavePlaceable(selected);
+
   // Total images the Generate button will produce, e.g. "Generate 8 images".
   const totalImages = selected.reduce(
     (n, k) => n + (PRODUCTS.find((p) => p.key === k)?.shots ?? 2),
@@ -468,8 +476,9 @@ export default function Home() {
   const activeColor = COLORS.find((c) => c.value === color);
 
   // Compact human-readable summary of the settings a batch was generated with,
-  // shown as chips in the batch header.
-  const summarizeSettings = (s) => {
+  // shown as chips in the batch header. `keys` lets us drop the placement chip for
+  // hat/beanie-only runs, where placement wasn't applied.
+  const summarizeSettings = (s, keys) => {
     const c = COLORS.find((x) => x.value === s.color);
     const pl = PLACEMENTS.find((x) => x.value === s.placement);
     const sz = SIZES.find((x) => x.value === s.size);
@@ -477,8 +486,8 @@ export default function Home() {
     const chips = [
       { swatch: c?.hex ?? null, label: nm(c) },
       { label: nm(sz) },
-      { label: nm(pl) },
     ];
+    if (keysHavePlaceable(keys)) chips.push({ label: nm(pl) });
     if (s.scene) chips.push({ label: t.sceneTag, accent: true });
     return chips;
   };
@@ -763,31 +772,34 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* placement — center or chest-pocket, as a segmented control */}
-                <div className="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-                  <h4 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t.logoPlacement}</h4>
-                  <div className="mt-3 flex gap-1 rounded-xl border border-zinc-200 p-1 dark:border-zinc-700">
-                    {PLACEMENTS.map((pl) => {
-                      const on = placement === pl.value;
-                      const name = lang === "zh" ? pl.nameZh : pl.name;
-                      return (
-                        <button
-                          key={pl.value}
-                          type="button"
-                          onClick={() => setPlacement(pl.value)}
-                          aria-pressed={on}
-                          className={`flex-1 rounded-lg px-3 py-1.5 text-center text-xs font-medium transition-all ${
-                            on
-                              ? "bg-indigo-600 text-white shadow-sm"
-                              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                          }`}
-                        >
-                          {name}
-                        </button>
-                      );
-                    })}
+                {/* placement — center or chest-pocket, as a segmented control.
+                    Hidden when only hats/beanies are selected (placement is a shirt thing). */}
+                {showPlacement && (
+                  <div className="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h4 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t.logoPlacement}</h4>
+                    <div className="mt-3 flex gap-1 rounded-xl border border-zinc-200 p-1 dark:border-zinc-700">
+                      {PLACEMENTS.map((pl) => {
+                        const on = placement === pl.value;
+                        const name = lang === "zh" ? pl.nameZh : pl.name;
+                        return (
+                          <button
+                            key={pl.value}
+                            type="button"
+                            onClick={() => setPlacement(pl.value)}
+                            aria-pressed={on}
+                            className={`flex-1 rounded-lg px-3 py-1.5 text-center text-xs font-medium transition-all ${
+                              on
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* size */}
                 <div className="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
@@ -937,7 +949,7 @@ export default function Home() {
                               </div>
                               {/* settings chips */}
                               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                {summarizeSettings(batch.settings).map((chip, ci) => (
+                                {summarizeSettings(batch.settings, batch.keys).map((chip, ci) => (
                                   <span
                                     key={ci}
                                     className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${

@@ -21,20 +21,63 @@ const OUTPUT_FORMAT = "png";
 // standard vertical apparel crop and keeps every shot the same shape.
 const ASPECT_RATIO = "3:4";
 
-// Appended to EVERY prompt so the logo renders identically across all shots.
-// This is the main lever for keeping logo colors consistent between images, and
-// for stopping the model from "auto-completing" a recognizable brand mark with
+// Appended to EVERY prompt so the logo renders consistently across all shots.
+// This is the main lever for keeping the logo faithful between images, and for
+// stopping the model from "auto-completing" a recognizable brand mark with
 // remembered taglines/slogans (e.g. adding "Think Different" to an Apple logo).
+// The ONE allowed change to logo colors is the contrast rule (CONTRAST_ADAPTATION).
 const LOGO_FIDELITY =
   " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the reference image — " +
-  "identical colors (same exact hues/hex values), shapes, proportions, line weights, and text. " +
-  "Do NOT recolor, tint, restyle, crop, or add gradients/shadows/effects to the logo artwork itself. " +
+  "same shapes, proportions, line weights, and text, and the same colors as the reference (except " +
+  "where the contrast rule below requires a color change so the logo stays visible). " +
+  "Do NOT restyle, crop, distort, or add gradients/shadows/effects to the logo artwork itself. " +
   "Reproduce ONLY the artwork that is actually visible in the reference image. Do NOT add any text, " +
   "words, letters, taglines, slogans, company names, or extra symbols/graphics that are not already " +
   "present in the reference — if the reference has no text, the mockup must have no text. Even if you " +
   "recognize the logo as belonging to a real brand, never complete it from memory with a slogan, " +
   "wordmark, or additional marks. The decorated garment must show the reference artwork and nothing else. " +
-  "The logo must look pixel-for-pixel the same across every mockup.";
+  "COLOR CONSISTENCY (very important): render the logo in its exact reference colors, and render those " +
+  "colors IDENTICALLY in every shot — the logo must be the same color in the product, close-up, and " +
+  "on-model images, with no hue shift, tint, brightness change, thread-palette substitution, or " +
+  "reinterpretation from one shot to the next. Keep the logo's shapes, layout, proportions, AND colors " +
+  "identical across every mockup.";
+
+// Appended to EVERY prompt, right after LOGO_FIDELITY. Real embroidery/screen-print
+// shops recolor any part of a design that matches the garment (and would vanish into
+// it) to a contrasting thread/ink — e.g. black outlines become white on a black shirt.
+// This tells the model to do the same, for ANY garment color, while leaving parts
+// that already contrast alone and never touching the logo's shapes or layout.
+const CONTRAST_ADAPTATION =
+  " CONTRAST FOR VISIBILITY: The finished logo must stay clearly visible against this garment color. " +
+  "If any part of the logo is close in color to the garment — so it would blend in and be hard to see " +
+  "(for example black lines/outlines on a black or navy garment, or a white fill on a white or sand " +
+  "garment) — recolor ONLY those low-contrast parts, and recolor them to a SINGLE FIXED contrasting " +
+  "color: pure white (#FFFFFF) on dark or medium-dark garments, or solid black (#000000) on white or " +
+  "light garments (on a true mid-tone garment, use whichever of pure white or solid black contrasts " +
+  "more). Use that exact same contrast color in EVERY shot so all images match. Leave every logo part " +
+  "that already contrasts well with the garment in its original reference color, and change nothing " +
+  "about the logo's shapes, proportions, layout, or text — adjust only the specific colors that would " +
+  "otherwise disappear. The whole logo must read crisply and identically across all shots.";
+
+// Appended to EVERY prompt. Every shot of a product must show the SAME physical
+// item — one garment, decorated once, photographed from different distances.
+const PLACEMENT_LOCK =
+  " PLACEMENT LOCK: Treat this as one single physical garment that has already been decorated and is " +
+  "being photographed multiple times. The logo's position on the garment, its alignment, and its size " +
+  "relative to the garment are FIXED and must be reproduced exactly as specified — never re-interpret, " +
+  "nudge, re-center, or resize the logo between shots.";
+
+// Appended to the close-up and on-model prompts when the product (flat) shot for
+// the same garment succeeded. That rendered shot rides along as a SECOND reference
+// image, and this clause tells the model to copy the garment from it exactly —
+// the strongest available lock for identical placement/size/color across shots.
+const GARMENT_MATCH =
+  " GARMENT MATCH: Two reference images are provided. The FIRST is the logo artwork. The SECOND is a " +
+  "photo of this exact decorated garment, already produced. Reproduce the garment from the second " +
+  "reference EXACTLY: identical logo placement on the garment, identical logo size relative to the " +
+  "garment, identical logo colors, identical garment color and style. Do NOT copy the second " +
+  "reference's camera angle, framing, crop, lighting, or background — only the garment itself and its " +
+  "decoration must match it perfectly, as if the very same item were photographed again.";
 
 // Deterministic seed per product so every shot of a product samples colors from
 // the same starting point, improving cross-image consistency.
@@ -71,16 +114,15 @@ const METHODS = {
   embroidery:
     "Rendered as genuine machine embroidery: raised satin-stitch and fill-stitch texture with " +
     "visible individual thread lines and directional sheen, slight natural fabric puckering " +
-    "around the stitched area, thread colors matched to the nearest standard embroidery thread " +
-    "palette rather than exact flat color, no smooth gradients — colors appear as distinct " +
-    "stitched color blocks, fine text rendered bold and simplified enough to be legible at " +
+    "around the stitched area, thread colors kept faithful to the logo's exact reference " +
+    "colors, no smooth gradients — the colors appear as solid stitched color blocks, fine text rendered bold and simplified enough to be legible at " +
     "embroidery scale, subtle dimensional thickness where stitching sits above the fabric surface.",
   // Caps — 3D puff on the main elements, flat satin detail around them.
   embroideryPuff:
     "Rendered as genuine machine embroidery: raised satin-stitch and fill-stitch texture with " +
-    "visible individual thread lines and directional sheen, thread colors matched to the nearest " +
-    "standard embroidery thread palette rather than exact flat color, no smooth gradients — " +
-    "colors appear as distinct stitched color blocks, fine text rendered bold and simplified " +
+    "visible individual thread lines and directional sheen, thread colors kept faithful to the logo's " +
+    "exact reference colors, no smooth gradients — the colors appear as solid stitched color " +
+    "blocks, fine text rendered bold and simplified " +
     "enough to be legible at embroidery scale. The main lettering/logo elements are raised " +
     "significantly above the fabric on a foam base, giving a bold 3D puffed appearance with soft " +
     "rounded edges on the raised sections, flatter satin-stitch detail work surrounding the " +
@@ -89,7 +131,7 @@ const METHODS = {
   embroideryKnit:
     "Rendered as flat machine embroidery directly on ribbed knit fabric, stitching following the " +
     "knit's rib texture, moderate stitch density to avoid excessive fabric puckering or knit " +
-    "distortion, thread colors matched to the nearest standard embroidery thread palette, clean " +
+    "distortion, thread colors kept faithful to the logo's exact reference colors, clean " +
     "stitch edges despite the stretch-knit surface.",
   screenprint:
     "Rendered as screen-printed ink: flat, opaque ink layer sitting on top of the fabric surface, " +
@@ -142,12 +184,20 @@ function sizeClause(size) {
   return ` ${spec}. Render the logo at this exact same scale relative to the garment in every shot.`;
 }
 
-// How each placement choice reads in the prompt. Anything unknown falls back to
-// the product's natural `defaultPlacement`. Kept garment-neutral so "center" also
-// reads sensibly on a cap front panel or beanie cuff, not just a shirt.
+// How each placement choice reads in the prompt. Only applied to `placeable`
+// products (shirts); hats/beanies always use their natural `defaultPlacement`
+// (front panel / cuff), so the pocket/center choice never lands on them.
+// Geometry is spelled out precisely (including the wearer-left = viewer-right
+// disambiguation) so every independently generated shot lands the logo in the
+// exact same spot.
 const PLACEMENT_WORDING = {
-  pocket: "on the wearer's upper-left chest, in the classic left-chest / pocket logo position",
-  center: "centered on the front of the garment",
+  pocket:
+    "in the classic left-chest pocket position: on the WEARER'S upper-left chest, which appears on the " +
+    "RIGHT side of the image when the garment faces the camera, vertically about 2–3 inches below the " +
+    "collar seam, horizontally centered between the placket line and the side seam",
+  center:
+    "perfectly centered horizontally on the front of the garment, at mid-chest height, the logo's " +
+    "center sitting on the garment's vertical midline",
 };
 
 // B/C. Garment + default-placement blocks per product, plus which shots to make.
@@ -161,6 +211,7 @@ const PRESETS = {
     defaultColor: "heather-gray",
     garment: "a {COLOR} cotton crewneck t-shirt",
     decor: "EMBROIDERED",
+    placeable: true,
     defaultPlacement: "on the left chest, centered a couple of inches below the collar seam",
     method: "embroidery",
     negative: "embroidery",
@@ -172,6 +223,7 @@ const PRESETS = {
     defaultColor: "black",
     garment: "a {COLOR} cotton crewneck t-shirt",
     decor: "SCREEN PRINTED",
+    placeable: true,
     defaultPlacement: "centered on the chest",
     method: "screenprint",
     negative: "screenprint",
@@ -209,7 +261,10 @@ function buildPrompt(preset, view, { color, placement, size, sceneOn }) {
     "{COLOR}",
     (color && String(color).trim()) || preset.defaultColor
   );
-  const placementText = (placement && PLACEMENT_WORDING[placement]) || preset.defaultPlacement;
+  // Placement choice only applies to placeable products (shirts). Hats/beanies
+  // always use their natural spot so "pocket/center" never lands on a cap or cuff.
+  const placementText =
+    (preset.placeable && placement && PLACEMENT_WORDING[placement]) || preset.defaultPlacement;
   const sizeAdj = size === "small" ? "small " : size === "large" ? "large " : "";
 
   // Model shot — one flowing lifestyle sentence, like the original. It uses the
@@ -247,8 +302,41 @@ function buildPrompt(preset, view, { color, placement, size, sceneOn }) {
   );
 }
 
-async function generateOne(productKey, label, view, prompt, reference, seed) {
-  const res = await fetch("https://openrouter.ai/api/v1/images", {
+// Retry transient failures only. `fetch` throws a TypeError with `cause.code`
+// for low-level network faults (e.g. UND_ERR_CONNECT_TIMEOUT when the TCP/TLS
+// handshake to OpenRouter never completes in time — a network blip, not a bug
+// in the request). Those, plus 429/502/503/504 responses, are worth a retry;
+// everything else (400 bad request, 401 bad key, content policy, ...) fails
+// immediately since retrying wouldn't change the outcome.
+const RETRYABLE_NETWORK_CODES = new Set([
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+]);
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const MAX_ATTEMPTS = 3; // 1 initial try + 2 retries
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithRetry(url, init) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const isLastAttempt = attempt === MAX_ATTEMPTS;
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || isLastAttempt || !RETRYABLE_STATUS.has(res.status)) return res;
+    } catch (e) {
+      if (isLastAttempt || !RETRYABLE_NETWORK_CODES.has(e?.cause?.code)) throw e;
+    }
+    await sleep(600 * attempt); // 600ms, then 1200ms
+  }
+}
+
+async function generateOne(productKey, label, view, prompt, references, seed) {
+  const res = await fetchWithRetry("https://openrouter.ai/api/v1/images", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -256,16 +344,15 @@ async function generateOne(productKey, label, view, prompt, reference, seed) {
     },
     body: JSON.stringify({
       model: MODEL,
-      prompt: prompt + LOGO_FIDELITY,
+      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + CONTRAST_ADAPTATION,
       seed,
       resolution: RESOLUTION,
       aspect_ratio: ASPECT_RATIO,
       output_format: OUTPUT_FORMAT,
-      // OpenRouter expects reference images as ContentPartImage objects,
-      // not bare strings. `reference` is a data URL or https URL of the logo.
-      input_references: [
-        { type: "image_url", image_url: { url: reference } },
-      ],
+      // OpenRouter expects reference images as ContentPartImage objects, not bare
+      // strings. `references` is [logoUrl] or [logoUrl, anchorShotUrl] — each a
+      // data URL or https URL.
+      input_references: references.map((url) => ({ type: "image_url", image_url: { url } })),
     }),
   });
 
@@ -273,6 +360,37 @@ async function generateOne(productKey, label, view, prompt, reference, seed) {
   if (!res.ok) return { productKey, label, view, ok: false, error: data.error ?? data };
   // return base64 strings; the page turns them into <img> data URLs
   return { productKey, label, view, ok: true, images: (data.data ?? []).map((d) => d.b64_json) };
+}
+
+// Generate every shot for ONE product, chained for consistency: the flat product
+// shot is generated FIRST, and its rendered garment is then passed as a second
+// reference image to the close-up and on-model shots (with GARMENT_MATCH), so all
+// shots show the identical item — same logo placement, size, and colors. If the
+// anchor shot fails, the remaining shots fall back to logo-only references.
+// Never throws; every failure is reported as a per-view result object.
+async function generateProductSet(key, p, opts) {
+  const seed = seedFor(key); // same seed for every shot of this product
+  const safe = (view, prompt, references) =>
+    generateOne(key, p.label, view, prompt, references, seed).catch((e) => {
+      const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
+      return { productKey: key, label: p.label, view, ok: false, error: detail };
+    });
+
+  const [anchorView, ...restViews] = p.views; // views[0] is the flat product shot
+  const anchor = await safe(anchorView, buildPrompt(p, anchorView, opts), [opts.logo]);
+  const anchorUrl =
+    anchor.ok && anchor.images?.[0] ? `data:image/png;base64,${anchor.images[0]}` : null;
+
+  const rest = await Promise.all(
+    restViews.map((view) =>
+      safe(
+        view,
+        buildPrompt(p, view, opts) + (anchorUrl ? GARMENT_MATCH : ""),
+        anchorUrl ? [opts.logo, anchorUrl] : [opts.logo]
+      )
+    )
+  );
+  return [anchor, ...rest];
 }
 
 export async function POST(req) {
@@ -289,30 +407,14 @@ export async function POST(req) {
     const keys = requested.filter((k) => PRESETS[k]);
     if (!keys.length) return Response.json({ error: "No valid products selected" }, { status: 400 });
 
-    // For each product, fire ALL of its shots in parallel. keysForTask mirrors
-    // `tasks` so a rejected promise can still report which product/view it was.
-    const tasks = [];
-    const keysForTask = [];
-    for (const k of keys) {
-      const p = PRESETS[k];
-      const seed = seedFor(k); // same seed for every shot of this product
-      for (const view of p.views) {
-        const prompt = buildPrompt(p, view, { color, placement, size, sceneOn: scene });
-        tasks.push(generateOne(k, p.label, view, prompt, logo, seed));
-        keysForTask.push({ productKey: k, label: p.label, view });
-      }
-    }
-
-    // allSettled so one flaky/slow image call can't sink the whole batch —
-    // the images that DID succeed still come back and render.
-    const settled = await Promise.allSettled(tasks);
-    const results = settled.map((s, i) => {
-      if (s.status === "fulfilled") return s.value;
-      const e = s.reason;
-      const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
-      return { ...keysForTask[i], ok: false, error: detail };
-    });
-    return Response.json({ results });
+    // Products run in parallel with each other; within a product the shots are
+    // CHAINED (anchor product shot first, then the rest copy its garment) so every
+    // shot of a product shows the identical item. generateProductSet never throws —
+    // failures come back as per-view result objects, so one flaky shot can't sink
+    // the batch.
+    const opts = { logo, color, placement, size, sceneOn: scene };
+    const sets = await Promise.all(keys.map((k) => generateProductSet(k, PRESETS[k], opts)));
+    return Response.json({ results: sets.flat() });
   } catch (e) {
     const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
     return Response.json({ error: detail }, { status: 500 });
