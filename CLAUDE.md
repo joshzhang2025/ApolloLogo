@@ -23,16 +23,19 @@ The mockup backend requires `OPENROUTER_API_KEY` (an [OpenRouter](https://openro
 
 ## What the app is
 
-"Apollo Studio" turns one uploaded logo into production-grade apparel mockups. Two independent tools live on **separate routes**:
+"Apollo Studio" turns one uploaded logo into production-grade apparel mockups. Three independent pieces live on **separate routes**:
 
-1. **Mockup studio** (`/`) — upload a logo, pick products (embroidered/screen-printed shirts, hats, beanies, blankets), tune color/placement/size/scene, and generate a set of AI images per product (a flat product shot, a stitch-level close-up, and an on-model photo).
-2. **Color simplifier** (`/simplify`) — a screen-print prep tool that reduces a logo to N solid spot colors via in-browser k-means, so nothing here touches the network.
+1. **Landing page** (`/`) — hero + "how it works" marketing sections. No generation logic; the primary CTA links to `/studio`.
+2. **Mockup studio** (`/studio`) — upload a logo, pick products (embroidered/screen-printed shirts, hats, beanies, blankets), tune color/placement/size/scene, and generate a set of AI images per product (a flat product shot, a stitch-level close-up, and an on-model photo).
+3. **Color simplifier** (`/simplify`) — a screen-print prep tool that reduces a logo to N solid spot colors via in-browser k-means, so nothing here touches the network.
 
 The whole UI is bilingual (English / 简体中文), toggled at runtime. Language state is **per-page** (each route owns its own `lang` `useState`); switching languages on one page doesn't affect the other.
 
 ## Architecture
 
-- **[app/page.js](app/page.js)** — the mockup studio frontend (one big `"use client"` component) at route `/`. Holds all UI state, the product/color/placement/size catalogs, and the `STRINGS` i18n dictionary. **Generation history is an append-only list of immutable `batches`** — each Generate run captures the logo + settings it used and is never mutated, so changing the logo/products and regenerating never destroys earlier results. It calls **only** `/api/generate-mockups`, never OpenRouter directly (this is what keeps the API key server-side).
+- **[app/page.js](app/page.js)** — the landing page at route `/`: hero section + "how it works" steps, its own `STRINGS` i18n dict, its own `lang` state. No product/generation logic lives here — the "Try the studio" CTA is a plain link to `/studio`.
+
+- **[app/studio/page.js](app/studio/page.js)** — the mockup studio frontend (one big `"use client"` component) at route `/studio`. Holds all UI state, the product/color/placement/size catalogs, and the `STRINGS` i18n dictionary. **Generation history is an append-only list of immutable `batches`** — each Generate run captures the logo + settings it used and is never mutated, so changing the logo/products and regenerating never destroys earlier results. It calls **only** `/api/generate-mockups`, never OpenRouter directly (this is what keeps the API key server-side).
 
 - **[app/simplify/page.js](app/simplify/page.js)** — thin route wrapper at `/simplify` that renders `SiteHeader` + `ColorSimplifier` + `SiteFooter` with its own `lang` state.
 
@@ -40,7 +43,7 @@ The whole UI is bilingual (English / 简体中文), toggled at runtime. Language
 
 - **[app/ColorSimplifier.js](app/ColorSimplifier.js)** — self-contained `"use client"` k-means color quantizer (canvas `getImageData` → cluster → snap pixels → `toDataURL`). Uses a seeded PRNG (`mulberry32`) so the same image + color count is deterministic. No server, no API cost. Carries its own copy of the `STRINGS` i18n dict. Rendered only by `app/simplify/page.js`.
 
-- **[app/SiteChrome.js](app/SiteChrome.js)** — shared `SiteHeader` / `SiteFooter` `"use client"` components used by both routes so the nav/footer stay identical across pages. Owns its own `STRINGS` dict (nav labels, lang toggle, footer note) per the i18n convention below. The "Simplify" nav link is a real `next/link` navigation to `/simplify`; "Studio" and "How it works" are hash links (`/#studio`, `/#how`) back to sections on `/`.
+- **[app/SiteChrome.js](app/SiteChrome.js)** — shared `SiteHeader` / `SiteFooter` `"use client"` components used by all routes so the nav/footer stay identical across pages. Owns its own `STRINGS` dict (nav labels, lang toggle, footer note) per the i18n convention below. "Studio" and "Simplify" are real `next/link` navigations (`/studio`, `/simplify`), each bolded in the nav when active; "How it works" is a hash link (`/#how`) back to a section on `/`.
 
 - **[app/layout.tsx](app/layout.tsx)** — root layout, Geist fonts, metadata. **[app/globals.css](app/globals.css)** — Tailwind v4 (`@import "tailwindcss"`, `@theme inline`), the `--background`/`--foreground` theme tokens, dark mode via `prefers-color-scheme`, and the `animate-fade-up` / `skeleton-shimmer` utilities the components reference.
 

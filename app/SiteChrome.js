@@ -47,6 +47,7 @@ export function SiteHeader({ lang, setLang }) {
   const t = STRINGS[lang];
   const pathname = usePathname();
   const onSimplify = pathname === "/simplify";
+  const onStudio = pathname === "/studio";
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md dark:border-zinc-800/70 dark:bg-zinc-950/70">
@@ -64,7 +65,12 @@ export function SiteHeader({ lang, setLang }) {
           <Link href="/#how" className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">
             {t.navHow}
           </Link>
-          <Link href="/#studio" className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">
+          <Link
+            href="/studio"
+            className={`transition-colors hover:text-zinc-900 dark:hover:text-zinc-100 ${
+              onStudio ? "font-semibold text-zinc-900 dark:text-zinc-100" : ""
+            }`}
+          >
             {t.navStudio}
           </Link>
           <Link
@@ -87,7 +93,7 @@ export function SiteHeader({ lang, setLang }) {
             {t.langButton}
           </button>
           <Link
-            href="/#studio"
+            href="/studio"
             className="hidden rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:block"
           >
             {t.navCta}
