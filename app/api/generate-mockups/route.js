@@ -2,12 +2,13 @@
 // BACKEND — this runs on the server, never in the browser. Your API key stays here.
 
 export const runtime = "nodejs";   // image gen can take >10s; needs Node runtime
-export const maxDuration = 120;    // up to three images per product; allow more time (Vercel)
+export const maxDuration = 120;    // up to three shots per request; allow more time (Vercel)
 
 // NOTE: OpenAI's image models (gpt-5.4-image-2 etc.) reject ANY request that
 // includes a reference image via their safety system — and this app always sends
-// the logo as a reference — so they can't be used here. Gemini image models
-// support the reference-logo flow. Confirmed working: gemini-3.1-flash-image.
+// the logo AND the product photo as references — so they can't be used here.
+// Gemini image models support the reference-image flow. Confirmed working:
+// gemini-3.1-flash-image.
 const MODEL = "google/gemini-3.1-flash-image";
 
 // 1K is sharp enough to zoom in and read stitch/print detail without the long
@@ -27,60 +28,84 @@ const ASPECT_RATIO = "3:4";
 // remembered taglines/slogans (e.g. adding "Think Different" to an Apple logo).
 // The ONE allowed change to logo colors is the contrast rule (CONTRAST_ADAPTATION).
 const LOGO_FIDELITY =
-  " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the reference image — " +
+  " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the logo reference image — " +
   "same shapes, proportions, line weights, and text, and the same colors as the reference (except " +
   "where the contrast rule below requires a color change so the logo stays visible). " +
   "Do NOT restyle, crop, distort, or add gradients/shadows/effects to the logo artwork itself. " +
-  "Reproduce ONLY the artwork that is actually visible in the reference image. Do NOT add any text, " +
+  "Reproduce ONLY the artwork that is actually visible in the logo reference. Do NOT add any text, " +
   "words, letters, taglines, slogans, company names, or extra symbols/graphics that are not already " +
   "present in the reference — if the reference has no text, the mockup must have no text. Even if you " +
   "recognize the logo as belonging to a real brand, never complete it from memory with a slogan, " +
-  "wordmark, or additional marks. The decorated garment must show the reference artwork and nothing else. " +
+  "wordmark, or additional marks. The decorated product must show the reference artwork and nothing else. " +
   "COLOR CONSISTENCY (very important): render the logo in its exact reference colors, and render those " +
   "colors IDENTICALLY in every shot — the logo must be the same color in the product, close-up, and " +
   "on-model images, with no hue shift, tint, brightness change, thread-palette substitution, or " +
   "reinterpretation from one shot to the next. Keep the logo's shapes, layout, proportions, AND colors " +
   "identical across every mockup.";
 
-// Appended to EVERY prompt, right after LOGO_FIDELITY. Real embroidery/screen-print
-// shops recolor any part of a design that matches the garment (and would vanish into
+// Appended to EVERY prompt, right after LOGO_FIDELITY. The customer uploads a
+// photo of THEIR actual product, and the whole point is that the mockup shows
+// that exact item — not a generic stand-in the model invents.
+const PRODUCT_REFERENCE =
+  " PRODUCT REFERENCE: The FIRST reference image is the logo artwork. The SECOND reference image is a " +
+  "photo of the customer's ACTUAL product. The mockup must show THIS exact product — identical product " +
+  "type, shape, silhouette, color, material, texture, construction details, seams, hardware, and trims. " +
+  "Do NOT substitute a different or generic product, and do NOT change the product's color, fabric, or " +
+  "design in any way — the ONLY change from the product reference is the added logo decoration described " +
+  "here. Ignore the product reference photo's background, framing, camera angle, and lighting; reproduce " +
+  "only the product itself.";
+
+// Appended to EVERY prompt, after PRODUCT_REFERENCE. Real embroidery/screen-print
+// shops recolor any part of a design that matches the product (and would vanish into
 // it) to a contrasting thread/ink — e.g. black outlines become white on a black shirt.
-// This tells the model to do the same, for ANY garment color, while leaving parts
+// This tells the model to do the same, for ANY product color, while leaving parts
 // that already contrast alone and never touching the logo's shapes or layout.
 const CONTRAST_ADAPTATION =
-  " CONTRAST FOR VISIBILITY: The finished logo must stay clearly visible against this garment color. " +
-  "If any part of the logo is close in color to the garment — so it would blend in and be hard to see " +
-  "(for example black lines/outlines on a black or navy garment, or a white fill on a white or sand " +
-  "garment) — recolor ONLY those low-contrast parts, and recolor them to a SINGLE FIXED contrasting " +
-  "color: pure white (#FFFFFF) on dark or medium-dark garments, or solid black (#000000) on white or " +
-  "light garments (on a true mid-tone garment, use whichever of pure white or solid black contrasts " +
-  "more). Use that exact same contrast color in EVERY shot so all images match. Leave every logo part " +
-  "that already contrasts well with the garment in its original reference color, and change nothing " +
-  "about the logo's shapes, proportions, layout, or text — adjust only the specific colors that would " +
-  "otherwise disappear. The whole logo must read crisply and identically across all shots.";
+  " CONTRAST FOR VISIBILITY: The finished logo must stay clearly visible against the product's color " +
+  "as shown in the product reference photo. If any part of the logo is close in color to the product — " +
+  "so it would blend in and be hard to see (for example black lines/outlines on a black or navy product, " +
+  "or a white fill on a white or cream product) — recolor ONLY those low-contrast parts, and recolor " +
+  "them to a SINGLE FIXED contrasting color: pure white (#FFFFFF) on dark or medium-dark products, or " +
+  "solid black (#000000) on white or light products (on a true mid-tone product, use whichever of pure " +
+  "white or solid black contrasts more). Use that exact same contrast color in EVERY shot so all images " +
+  "match. Leave every logo part that already contrasts well with the product in its original reference " +
+  "color, and change nothing about the logo's shapes, proportions, layout, or text — adjust only the " +
+  "specific colors that would otherwise disappear. The whole logo must read crisply and identically " +
+  "across all shots.";
 
-// Appended to EVERY prompt. Every shot of a product must show the SAME physical
-// item — one garment, decorated once, photographed from different distances.
+// Appended to EVERY prompt. Every shot must show the SAME physical item —
+// one product, decorated once, photographed from different distances.
 const PLACEMENT_LOCK =
-  " PLACEMENT LOCK: Treat this as one single physical garment that has already been decorated and is " +
-  "being photographed multiple times. The logo's position on the garment, its alignment, and its size " +
-  "relative to the garment are FIXED and must be reproduced exactly as specified — never re-interpret, " +
+  " PLACEMENT LOCK: Treat this as one single physical product that has already been decorated and is " +
+  "being photographed multiple times. The logo's position on the product, its alignment, and its size " +
+  "relative to the product are FIXED and must be reproduced exactly as specified — never re-interpret, " +
   "nudge, re-center, or resize the logo between shots.";
 
-// Appended to the close-up and on-model prompts when the product (flat) shot for
-// the same garment succeeded. That rendered shot rides along as a SECOND reference
-// image, and this clause tells the model to copy the garment from it exactly —
-// the strongest available lock for identical placement/size/color across shots.
-const GARMENT_MATCH =
-  " GARMENT MATCH: Two reference images are provided. The FIRST is the logo artwork. The SECOND is a " +
-  "photo of this exact decorated garment, already produced. Reproduce the garment from the second " +
-  "reference EXACTLY: identical logo placement on the garment, identical logo size relative to the " +
-  "garment, identical logo colors, identical garment color and style. Do NOT copy the second " +
-  "reference's camera angle, framing, crop, lighting, or background — only the garment itself and its " +
-  "decoration must match it perfectly, as if the very same item were photographed again.";
+// Appended to prompts when the user drew a placement circle on their product
+// photo. That annotated copy of the photo (product + bright magenta circle)
+// rides along as the THIRD reference image; this clause explains what it means
+// and forbids the circle itself from appearing in the output.
+const MARKER_REFERENCE =
+  " PLACEMENT MARKER: The THIRD reference image is the same product photo with a bright magenta " +
+  "circle drawn on it. That circle marks EXACTLY where the customer wants the logo: place the logo " +
+  "centered inside the circled area, sized to fit within the circle. The magenta circle is an " +
+  "annotation only — it must NOT appear anywhere in the mockup. The finished product has no circle, " +
+  "ring, outline, or marking of any kind; only the logo decoration itself.";
 
-// Deterministic seed per product so every shot of a product samples colors from
-// the same starting point, improving cross-image consistency.
+// Appended to the close-up and on-model prompts when the flat product shot for
+// the same request succeeded. That rendered shot rides along as the LAST
+// reference image, and this clause tells the model to copy the decorated product
+// from it exactly — the strongest available lock for identical placement/size/color.
+const DECORATED_MATCH =
+  " DECORATED MATCH: The LAST reference image provided is a photo of this exact product already " +
+  "decorated with the logo. Reproduce the decorated product from that last reference EXACTLY: " +
+  "identical logo placement on the product, identical logo size relative to the product, identical " +
+  "logo colors, identical product color and style. Do NOT copy that reference's camera angle, " +
+  "framing, crop, lighting, or background — only the product itself and its decoration must match it " +
+  "perfectly, as if the very same item were photographed again.";
+
+// Deterministic seed per product photo so every shot of a request samples colors
+// from the same starting point, improving cross-image consistency.
 function seedFor(key) {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
@@ -89,24 +114,25 @@ function seedFor(key) {
 
 // ---------------------------------------------------------------------------
 // COMPOSABLE PROMPT SYSTEM
-// finalPrompt = SHOT_TYPE + GARMENT/PLACEMENT + METHOD + LIGHTING_BG + QUALITY
+// finalPrompt = SHOT_TYPE + PRODUCT/PLACEMENT + METHOD + LIGHTING_BG + QUALITY
 //               + NEGATIVES (folded into the prompt as an avoid-clause, since
 //               Gemini image models have no separate negative_prompt channel)
 // ---------------------------------------------------------------------------
 
 // A. Shot-type blocks for the FLAT shots. The model shot is built separately
 //    (see buildPrompt) because it reads best as one flowing lifestyle sentence.
-//    - product: verifies placement, scale, garment color
+//    - product: verifies placement, scale, and that the item matches the upload
 //    - closeup: what embroidery jobs get approved/rejected on — stitch quality
 const SHOT_TYPES = {
   product:
-    "Professional e-commerce product photography, garment shown flat-lay or on an invisible " +
-    "ghost mannequin, straight-on centered angle, entire product in frame, even soft studio " +
-    "lighting, no harsh shadows, high resolution, sharp focus across the whole garment.",
+    "Professional e-commerce product photography, the product shown flat-lay or on an invisible " +
+    "ghost mannequin (or neatly arranged if it is not a wearable), straight-on centered angle, " +
+    "entire product in frame, even soft studio lighting, no harsh shadows, high resolution, " +
+    "sharp focus across the whole product.",
   closeup:
     "Macro close-up product photography, tight crop centered on the decorated area only, " +
     "filling most of the frame, slightly angled raking light to reveal surface texture and " +
-    "dimensionality, extremely sharp focus, visible fabric weave.",
+    "dimensionality, extremely sharp focus, visible material texture.",
 };
 
 // D. Method blocks — this is the part that fixes the "looks printed" problem.
@@ -115,45 +141,36 @@ const METHODS = {
     "Rendered as genuine machine embroidery: raised satin-stitch and fill-stitch texture with " +
     "visible individual thread lines and directional sheen, slight natural fabric puckering " +
     "around the stitched area, thread colors kept faithful to the logo's exact reference " +
-    "colors, no smooth gradients — the colors appear as solid stitched color blocks, fine text rendered bold and simplified enough to be legible at " +
-    "embroidery scale, subtle dimensional thickness where stitching sits above the fabric surface.",
-  // Caps — 3D puff on the main elements, flat satin detail around them.
-  embroideryPuff:
-    "Rendered as genuine machine embroidery: raised satin-stitch and fill-stitch texture with " +
-    "visible individual thread lines and directional sheen, thread colors kept faithful to the logo's " +
-    "exact reference colors, no smooth gradients — the colors appear as solid stitched color " +
-    "blocks, fine text rendered bold and simplified " +
-    "enough to be legible at embroidery scale. The main lettering/logo elements are raised " +
-    "significantly above the fabric on a foam base, giving a bold 3D puffed appearance with soft " +
-    "rounded edges on the raised sections, flatter satin-stitch detail work surrounding the " +
-    "puffed elements.",
-  // Beanies — flat embroidery on stretch knit; avoid puff language, watch puckering.
-  embroideryKnit:
-    "Rendered as flat machine embroidery directly on ribbed knit fabric, stitching following the " +
-    "knit's rib texture, moderate stitch density to avoid excessive fabric puckering or knit " +
-    "distortion, thread colors kept faithful to the logo's exact reference colors, clean " +
-    "stitch edges despite the stretch-knit surface.",
+    "colors, no smooth gradients — the colors appear as solid stitched color blocks, fine text " +
+    "rendered bold and simplified enough to be legible at embroidery scale, subtle dimensional " +
+    "thickness where stitching sits above the fabric surface. If the product is a structured cap, " +
+    "the main elements may be raised 3D puff embroidery; if it is a stretch knit, use flat " +
+    "embroidery following the knit texture with moderate stitch density.",
   screenprint:
     "Rendered as screen-printed ink: flat, opaque ink layer sitting on top of the fabric surface, " +
     "sharp clean vector-like edges, slight visible ink texture on close inspection, no thread or " +
     "stitch texture of any kind, colors as flat distinct spot-color layers, ink slightly absorbed " +
-    "into the fabric grain on light garments and sitting more visibly on top with an underbase " +
-    "on dark garments.",
+    "into the fabric grain on light products and sitting more visibly on top with an underbase " +
+    "on dark products.",
 };
 
 // Short one-line method note for the on-model shot. The full METHODS blocks above
 // are macro/texture-focused and read wrong on a full-body lifestyle photo, so the
-// model shot gets this lighter descriptor instead (matches the original wording).
+// model shot gets this lighter descriptor instead.
 const METHOD_SHORT = {
   embroidery: "Realistic raised satin-stitch embroidery with visible threads.",
-  embroideryPuff: "Raised 3D puff embroidery with visible thread rows.",
-  embroideryKnit: "Flat embroidery, thread texture visible against the knit.",
   screenprint: "Flat matte screen-printed ink finish.",
 };
 
+// What the decoration is called inside the prompt sentences.
+const METHOD_DECOR = {
+  embroidery: "EMBROIDERED",
+  screenprint: "SCREEN PRINTED",
+};
+
 // E. Background/lighting + quality tags. LIGHTING_BG is skipped on model shots —
-//    the model shot-type block carries its own backdrop/lighting wording (and the
-//    scene toggle may replace it).
+//    the model shot carries its own backdrop/lighting wording (and the scene
+//    toggle may replace it).
 const LIGHTING_BG =
   "Clean neutral light grey studio background, soft diffused lighting, no distracting props.";
 const QUALITY_TAGS =
@@ -163,30 +180,30 @@ const QUALITY_TAGS =
 //    Gemini has no negative_prompt parameter, so these ride inside the prompt.
 const NEGATIVE_BASE =
   "flat vector logo look, sticker-like drop shadow, floating or detached design, warped or " +
-  "blurred text, incorrect garment color, extra logos or watermarks, distorted garment shape, " +
-  "low resolution, cropped incorrectly";
+  "blurred text, wrong product or product color, extra logos or watermarks, distorted product " +
+  "shape, low resolution, cropped incorrectly";
 const NEGATIVE_METHOD = {
   embroidery: ", glossy print sheen, smooth gradient fills, perfectly flat texture, printed-looking edges",
   screenprint: ", raised thread texture, stitching, puckered fabric",
 };
 
-// The logo must occupy the SAME fraction of the garment in every shot. A bare
+// The logo must occupy the SAME fraction of the product in every shot. A bare
 // "small/large" is interpreted differently per image, so we anchor size to a
-// concrete proportion of the garment and append this identical clause to all
-// of a product's prompts. This wording is for a CENTERED front print.
+// concrete proportion of the product and append this identical clause to all
+// of a request's prompts. This wording is for centered / natural placements.
 const SIZE_WORDING = {
-  small: "The logo is small, spanning about 15% of the garment's front width",
-  medium: "The logo is medium, spanning about 30% of the garment's front width",
-  large: "The logo is large, spanning about 55% of the garment's front width",
+  small: "The logo is small, spanning about 15% of the product's front width",
+  medium: "The logo is medium, spanning about 30% of the product's front width",
+  large: "The logo is large, spanning about 55% of the product's front width",
 };
 function sizeClause(size) {
   const spec = SIZE_WORDING[size] || SIZE_WORDING.medium;
-  return ` ${spec}. Render the logo at this exact same scale relative to the garment in every shot.`;
+  return ` ${spec}. Render the logo at this exact same scale relative to the product in every shot.`;
 }
 
 // A left-chest / pocket logo is ALWAYS small and sized to fit that little panel,
 // so it is sized in absolute inches (by the logo's WIDTH) rather than as a % of
-// the whole garment. This is what fixes wide/horizontal logos (e.g. a wordmark
+// the whole product. This is what fixes wide/horizontal logos (e.g. a wordmark
 // with a long tagline): "30% of the front width" made them too wide for the
 // left-chest zone, so the model centered them. Sizing by a small fixed width and
 // telling it to scale wide logos DOWN keeps them on the chest where they belong.
@@ -197,171 +214,110 @@ function pocketSizeClause(size) {
     ` The logo is a small left-chest logo, ${spec} wide at its widest point, scaled while preserving its ` +
     `exact original aspect ratio. A wide or horizontal logo must be scaled DOWN so its full width still ` +
     `fits within the small left-chest area — it must not be enlarged, stretched, cropped, or moved toward ` +
-    `the center of the garment to make room. Keep the logo at this exact same small scale and left-chest ` +
+    `the center of the product to make room. Keep the logo at this exact same small scale and left-chest ` +
     `position in every shot.`
   );
 }
 
-// How each placement choice reads in the prompt. Only applied to `placeable`
-// products (shirts); hats/beanies always use their natural `defaultPlacement`
-// (front panel / cuff), so the pocket/center choice never lands on them.
-// Geometry is spelled out precisely (including the wearer-left = viewer-right
-// disambiguation) so every independently generated shot lands the logo in the
-// exact same spot.
+// How each placement choice reads in the prompt. Since the product is whatever
+// the customer uploaded, "default" lets the model pick the product's natural
+// decoration spot; pocket/center are explicit overrides. Geometry is spelled out
+// precisely (including the wearer-left = viewer-right disambiguation) so every
+// independently generated shot lands the logo in the exact same spot.
 const PLACEMENT_WORDING = {
+  default:
+    "in the most natural, conventional decoration spot for this type of product (for example: the " +
+    "left chest of a shirt, the front center panel of a cap, the folded cuff of a beanie, or near a " +
+    "corner of a blanket) — pick that single natural spot and keep it identical in every shot",
   pocket:
     "as a small left-chest logo positioned on the WEARER'S upper-left chest — which appears on the RIGHT " +
-    "half of the image when the garment faces the camera — vertically about 2–3 inches below the collar " +
+    "half of the image when the product faces the camera — vertically about 2–3 inches below the collar " +
     "seam, sitting entirely on that left-chest panel between the vertical center placket and the sleeve " +
-    "seam. It must NOT be centered on the garment, must NOT span across the chest, and must NOT cross the " +
+    "seam. It must NOT be centered on the product, must NOT span across the chest, and must NOT cross the " +
     "vertical center line, regardless of the logo's shape. A wide or horizontal logo stays in this same " +
-    "left-chest spot, just scaled down to fit",
+    "left-chest spot, just scaled down to fit. If the product has no chest (e.g. a hat or bag), use the " +
+    "equivalent small off-center front spot instead",
   center:
-    "perfectly centered horizontally on the front of the garment, at mid-chest height, the logo's " +
-    "center sitting on the garment's vertical midline",
+    "perfectly centered horizontally on the front of the product, at mid-height of the front decoration " +
+    "area, the logo's center sitting on the product's vertical midline",
 };
 
-// B/C. Garment + default-placement blocks per product, plus which shots to make.
-// Embroidered products get THREE shots (product, closeup, model) — texture/thread
-// quality is the whole approval question and the close-up is what customers
-// approve or reject on. Screenprint gets TWO (product, model) — ink is flatter
-// and more predictable, so a close-up earns less.
-const PRESETS = {
-  "shirt-embroidered": {
-    label: "Shirt — Embroidered",
-    defaultColor: "heather-gray",
-    garment: "a {COLOR} cotton crewneck t-shirt",
-    decor: "EMBROIDERED",
-    placeable: true,
-    defaultPlacement: "on the left chest, centered a couple of inches below the collar seam",
-    method: "embroidery",
-    negative: "embroidery",
-    views: ["product", "closeup", "model"],
-    scene: "a warm modern coffee-shop interior with plants, softly blurred behind the model",
-  },
-  "shirt-screenprint": {
-    label: "Shirt — Screen Print",
-    defaultColor: "black",
-    garment: "a {COLOR} cotton crewneck t-shirt",
-    decor: "SCREEN PRINTED",
-    placeable: true,
-    defaultPlacement: "centered on the chest",
-    method: "screenprint",
-    negative: "screenprint",
-    views: ["product", "model"],
-    scene: "a sunny city street with storefronts and warm daylight, softly blurred behind the model",
-  },
-  "hat-embroidered": {
-    label: "Hat — Embroidered",
-    defaultColor: "navy",
-    garment: "a structured {COLOR} six-panel baseball cap with a curved brim",
-    decor: "EMBROIDERED",
-    defaultPlacement: "on the front center panel, gently curved to follow the panel's shape",
-    method: "embroideryPuff",
-    negative: "embroidery",
-    views: ["product", "closeup", "model"],
-    scene: "a sunlit park with green trees and bright natural daylight, softly blurred behind the model",
-  },
-  "beanie-embroidered": {
-    label: "Beanie — Embroidered",
-    defaultColor: "charcoal",
-    garment: "a {COLOR} ribbed knit cuffed beanie",
-    decor: "EMBROIDERED",
-    defaultPlacement: "flat on the folded cuff, centered",
-    method: "embroideryKnit",
-    negative: "embroidery",
-    views: ["product", "closeup", "model"],
-    scene: "a crisp autumn street with warm golden light and soft bokeh, softly blurred behind the model",
-  },
-  // A blanket isn't worn, so it overrides the two body-based shots: `productShot`
-  // replaces the flat framing with a folded-blanket arrangement (logo on the fold),
-  // and `modelUsage` replaces "worn by a model" with the blanket being used. The
-  // logo sits in the fixed bottom-right corner (not placeable, so no pocket/center).
-  "blanket-embroidered": {
-    label: "Blanket — Embroidered",
-    defaultColor: "cream",
-    garment: "a {COLOR} soft fleece throw blanket",
-    decor: "EMBROIDERED",
-    defaultPlacement: "in the bottom-right corner of the blanket, a few inches in from the corner edges",
-    method: "embroidery",
-    negative: "embroidery",
-    views: ["product", "closeup", "model"],
-    scene: "a cozy living room with a soft sofa and warm lamp light, softly blurred in the background",
-    productShot:
-      "Professional e-commerce product photography of the blanket loosely folded into a neat rectangle " +
-      "and laid flat, presenting one smooth, flat top surface with NO flipped-over or triangular corner " +
-      "folds. The embroidered logo sits fully on that flat, smooth top surface toward the lower-right, " +
-      "lying completely flat and fully visible — never on a fold line, crease, edge, or turned-over " +
-      "corner. Straight-on slightly elevated angle, the whole folded blanket in frame, even soft studio " +
-      "lighting, no harsh shadows, sharp focus on the stitching.",
-    modelUsage:
-      "draped over the shoulders of a real person cozily relaxing on a sofa, the embroidered corner " +
-      "hanging in clear view near the front",
-  },
-};
+// The three shot types a request can ask for, in the order they render.
+// "product" is the anchor (generated first, feeds the others as a reference).
+const VIEW_ORDER = ["product", "closeup", "model"];
 
 // Compose one shot's full prompt from the blocks above.
-function buildPrompt(preset, view, { color, placement, size, sceneOn }) {
-  // Garment + placement + size. "this logo" points the model at the reference image.
-  const garment = preset.garment.replaceAll(
-    "{COLOR}",
-    (color && String(color).trim()) || preset.defaultColor
-  );
-  // Placement choice only applies to placeable products (shirts). Hats/beanies
-  // always use their natural spot so "pocket/center" never lands on a cap or cuff.
-  const placementText =
-    (preset.placeable && placement && PLACEMENT_WORDING[placement]) || preset.defaultPlacement;
+function buildPrompt(view, { method, placement, size, sceneOn, marker }) {
+  const decor = METHOD_DECOR[method];
 
-  // Pocket placement is always a small left-chest logo sized in inches (so wide
-  // logos scale down to fit instead of drifting to center). Everything else scales
-  // by % of the garment's front width. `sizing` is identical across a product's
-  // shots so scale/position stay locked between them.
-  const isPocket = preset.placeable && placement === "pocket";
-  const sizing = isPocket ? pocketSizeClause(size) : sizeClause(size);
-  // No size adjective for pocket ("small large logo" would contradict) — the
-  // pocket sizing clause fully describes it.
-  const sizeAdj = isPocket ? "" : size === "small" ? "small " : size === "large" ? "large " : "";
+  // A drawn marker overrides both placement and size: the circle's center is
+  // the logo's position and its diameter is the logo's width. Position is also
+  // spelled out numerically (% from left/top of the product photo's frame) so
+  // the text and the annotated marker reference reinforce each other.
+  let placementText, sizing, sizeAdj;
+  if (marker) {
+    const px = Math.round(marker.x * 100);
+    const py = Math.round(marker.y * 100);
+    const pw = Math.max(1, Math.round(marker.r * 2 * 100));
+    placementText =
+      "at the exact spot the customer circled on their product photo: centered at the point " +
+      `approximately ${px}% from the left edge and ${py}% from the top of the product photo's frame, ` +
+      "exactly where the bright magenta circle is drawn in the placement-marker reference image";
+    sizing =
+      ` The logo's width spans about ${pw}% of the product photo's width — sized to fit inside the ` +
+      "drawn marker circle while preserving the logo's exact original aspect ratio. Render the logo " +
+      "at this exact same position and scale in every shot.";
+    sizeAdj = "";
+  } else {
+    placementText = PLACEMENT_WORDING[placement] || PLACEMENT_WORDING.default;
+    // Pocket placement is always a small left-chest logo sized in inches (so wide
+    // logos scale down to fit instead of drifting to center). Everything else scales
+    // by % of the product's front width. `sizing` is identical across a request's
+    // shots so scale/position stay locked between them.
+    const isPocket = placement === "pocket";
+    sizing = isPocket ? pocketSizeClause(size) : sizeClause(size);
+    // No size adjective for pocket ("small large logo" would contradict) — the
+    // pocket sizing clause fully describes it.
+    sizeAdj = isPocket ? "" : size === "small" ? "small " : size === "large" ? "large " : "";
+  }
+  const markerClause = marker ? MARKER_REFERENCE : "";
 
-  // Model shot — one flowing lifestyle sentence, like the original. It uses the
-  // short method note (not the heavy macro block) and swaps in the lifestyle
-  // scene only when the toggle is on; otherwise a plain, empty studio backdrop
-  // (no environment) so "scene off" reads as a truly blank background.
+  // Model shot — one flowing lifestyle sentence. It uses the short method note
+  // (not the heavy macro block) and swaps in a lifestyle scene only when the
+  // toggle is on; otherwise a plain, empty studio backdrop (no environment) so
+  // "scene off" reads as a truly blank background.
   if (view === "model") {
-    const background =
-      sceneOn && preset.scene
-        ? preset.scene
-        : "a plain, empty seamless light-grey studio backdrop, completely blank with no scenery, " +
-          "props, furniture, windows, or background objects of any kind";
-    // Wearable products are "worn by a model"; non-wearables (e.g. a blanket)
-    // supply their own `modelUsage` describing how the item is used instead.
-    const subjectPhrase = preset.modelUsage
-      ? `${garment} ${preset.modelUsage}`
-      : `a real human model wearing ${garment}`;
+    const background = sceneOn
+      ? "a fitting real-world lifestyle setting that suits this type of product, softly blurred " +
+        "behind the model"
+      : "a plain, empty seamless light-grey studio backdrop, completely blank with no scenery, " +
+        "props, furniture, windows, or background objects of any kind";
     return (
-      "Professional high-resolution lifestyle photo of " +
-      subjectPhrase +
-      `, this ${sizeAdj}logo ${preset.decor} ${placementText}. ` +
-      METHOD_SHORT[preset.method] +
+      "Professional high-resolution lifestyle photo of a real human model wearing or naturally using " +
+      "the exact product from the product reference photo" +
+      `, this ${sizeAdj}logo ${decor} ${placementText}. ` +
+      METHOD_SHORT[method] +
       ` Natural relaxed pose, flattering studio lighting, ${background}, shallow depth of field, ` +
       "photorealistic." +
-      sizing
+      sizing +
+      markerClause
     );
   }
 
   // Flat shots (product, closeup) — the detailed, texture-forward composable prompt.
-  // A product can override the flat framing (e.g. a blanket shown folded) via
-  // `productShot`; the close-up always uses the generic macro framing.
-  const flatFraming = view === "product" && preset.productShot ? preset.productShot : SHOT_TYPES[view];
-  const subject = `The garment is ${garment} with this ${sizeAdj}logo ${preset.decor} ${placementText}.`;
-  const negatives = ` Strictly avoid: ${NEGATIVE_BASE}${NEGATIVE_METHOD[preset.negative] || ""}.`;
+  const subject =
+    `The product is the exact item shown in the product reference photo, with this ` +
+    `${sizeAdj}logo ${decor} ${placementText}.`;
+  const negatives = ` Strictly avoid: ${NEGATIVE_BASE}${NEGATIVE_METHOD[method] || ""}.`;
   return (
-    flatFraming +
+    SHOT_TYPES[view] +
     " " + subject +
     sizing +
-    " " + METHODS[preset.method] +
+    " " + METHODS[method] +
     " " + LIGHTING_BG +
     " " + QUALITY_TAGS +
-    negatives
+    negatives +
+    markerClause
   );
 }
 
@@ -398,7 +354,7 @@ async function fetchWithRetry(url, init) {
   }
 }
 
-async function generateOne(productKey, label, view, prompt, references, seed) {
+async function generateOne(view, prompt, references, seed) {
   const res = await fetchWithRetry("https://openrouter.ai/api/v1/images", {
     method: "POST",
     headers: {
@@ -407,53 +363,64 @@ async function generateOne(productKey, label, view, prompt, references, seed) {
     },
     body: JSON.stringify({
       model: MODEL,
-      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + CONTRAST_ADAPTATION,
+      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + PRODUCT_REFERENCE + CONTRAST_ADAPTATION,
       seed,
       resolution: RESOLUTION,
       aspect_ratio: ASPECT_RATIO,
       output_format: OUTPUT_FORMAT,
       // OpenRouter expects reference images as ContentPartImage objects, not bare
-      // strings. `references` is [logoUrl] or [logoUrl, anchorShotUrl] — each a
-      // data URL or https URL.
+      // strings. `references` is [logoUrl, productUrl] or [logoUrl, productUrl,
+      // anchorShotUrl] — each a data URL or https URL.
       input_references: references.map((url) => ({ type: "image_url", image_url: { url } })),
     }),
   });
 
   const data = await res.json();
-  if (!res.ok) return { productKey, label, view, ok: false, error: data.error ?? data };
+  if (!res.ok) return { view, ok: false, error: data.error ?? data };
   // return base64 strings; the page turns them into <img> data URLs
-  return { productKey, label, view, ok: true, images: (data.data ?? []).map((d) => d.b64_json) };
+  return { view, ok: true, images: (data.data ?? []).map((d) => d.b64_json) };
 }
 
-// Generate every shot for ONE product, chained for consistency: the flat product
-// shot is generated FIRST, and its rendered garment is then passed as a second
-// reference image to the close-up and on-model shots (with GARMENT_MATCH), so all
-// shots show the identical item — same logo placement, size, and colors. If the
-// anchor shot fails, the remaining shots fall back to logo-only references.
+// Generate every requested shot, chained for consistency: when the flat product
+// shot is among the requested views it is generated FIRST, and its rendered
+// result is then passed as a THIRD reference image to the close-up and on-model
+// shots (with DECORATED_MATCH), so all shots show the identical item — same logo
+// placement, size, and colors. If the anchor shot fails (or wasn't requested),
+// the remaining shots fall back to logo+product references only.
 // Never throws; every failure is reported as a per-view result object.
-async function generateProductSet(key, p, opts) {
-  const seed = seedFor(key); // same seed for every shot of this product
+async function generateShotSet(views, opts) {
+  const seed = seedFor(opts.productImage.slice(-256)); // same seed for every shot
+  // Reference order matters — the prompt clauses name them positionally:
+  // 1: logo, 2: product photo, 3 (optional): marker-annotated photo,
+  // last (optional): the rendered anchor shot (DECORATED_MATCH).
+  const baseRefs = opts.markerImage
+    ? [opts.logo, opts.productImage, opts.markerImage]
+    : [opts.logo, opts.productImage];
   const safe = (view, prompt, references) =>
-    generateOne(key, p.label, view, prompt, references, seed).catch((e) => {
+    generateOne(view, prompt, references, seed).catch((e) => {
       const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
-      return { productKey: key, label: p.label, view, ok: false, error: detail };
+      return { view, ok: false, error: detail };
     });
 
-  const [anchorView, ...restViews] = p.views; // views[0] is the flat product shot
-  const anchor = await safe(anchorView, buildPrompt(p, anchorView, opts), [opts.logo]);
-  const anchorUrl =
-    anchor.ok && anchor.images?.[0] ? `data:image/png;base64,${anchor.images[0]}` : null;
+  const results = [];
+  let anchorUrl = null;
+  if (views.includes("product")) {
+    const anchor = await safe("product", buildPrompt("product", opts), baseRefs);
+    if (anchor.ok && anchor.images?.[0]) anchorUrl = `data:image/png;base64,${anchor.images[0]}`;
+    results.push(anchor);
+  }
 
+  const restViews = views.filter((v) => v !== "product");
   const rest = await Promise.all(
     restViews.map((view) =>
       safe(
         view,
-        buildPrompt(p, view, opts) + (anchorUrl ? GARMENT_MATCH : ""),
-        anchorUrl ? [opts.logo, anchorUrl] : [opts.logo]
+        buildPrompt(view, opts) + (anchorUrl ? DECORATED_MATCH : ""),
+        anchorUrl ? [...baseRefs, anchorUrl] : baseRefs
       )
     )
   );
-  return [anchor, ...rest];
+  return [...results, ...rest];
 }
 
 export async function POST(req) {
@@ -462,22 +429,38 @@ export async function POST(req) {
       return Response.json({ error: "Server is missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
-    const { logo, product, products, color, scene, placement, size } = await req.json();
+    const { logo, productImage, method, views, placement, size, scene, marker, markerImage } =
+      await req.json();
     if (!logo) return Response.json({ error: "No logo provided" }, { status: 400 });
+    if (!productImage) return Response.json({ error: "No product photo provided" }, { status: 400 });
+    if (!METHODS[method]) return Response.json({ error: "Invalid decoration method" }, { status: 400 });
 
-    // Accept a single `product` (click-to-generate) or a `products` array; default to all.
-    const requested = products?.length ? products : product ? [product] : Object.keys(PRESETS);
-    const keys = requested.filter((k) => PRESETS[k]);
-    if (!keys.length) return Response.json({ error: "No valid products selected" }, { status: 400 });
+    // A drawn placement circle needs both halves to be usable: the numeric
+    // geometry (for the prompt) and the annotated photo (as a reference image).
+    const hasMarker =
+      marker &&
+      typeof markerImage === "string" &&
+      [marker.x, marker.y, marker.r].every((n) => typeof n === "number" && isFinite(n));
 
-    // Products run in parallel with each other; within a product the shots are
-    // CHAINED (anchor product shot first, then the rest copy its garment) so every
-    // shot of a product shows the identical item. generateProductSet never throws —
-    // failures come back as per-view result objects, so one flaky shot can't sink
-    // the batch.
-    const opts = { logo, color, placement, size, sceneOn: scene };
-    const sets = await Promise.all(keys.map((k) => generateProductSet(k, PRESETS[k], opts)));
-    return Response.json({ results: sets.flat() });
+    // Requested shots, in canonical order; default to all three.
+    const requested = Array.isArray(views) && views.length ? views : VIEW_ORDER;
+    const shotViews = VIEW_ORDER.filter((v) => requested.includes(v));
+    if (!shotViews.length) {
+      return Response.json({ error: "Select at least one shot type" }, { status: 400 });
+    }
+
+    const opts = {
+      logo,
+      productImage,
+      method,
+      placement,
+      size,
+      sceneOn: scene,
+      marker: hasMarker ? marker : null,
+      markerImage: hasMarker ? markerImage : null,
+    };
+    const results = await generateShotSet(shotViews, opts);
+    return Response.json({ results });
   } catch (e) {
     const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
     return Response.json({ error: detail }, { status: 500 });
