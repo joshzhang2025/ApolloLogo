@@ -4,6 +4,7 @@
 
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteHeader, SiteFooter } from "./SiteChrome";
 
 // `shots` mirrors the backend's views per product: embroidered items get a third
 // close-up shot (stitch detail is what gets approved on); screenprint gets two.
@@ -14,6 +15,7 @@ const PRODUCTS = [
   { key: "shirt-screenprint", label: "Shirt — Screen Print", labelZh: "T恤 · 丝网印刷", emoji: "🖨️", shots: 2, placeable: true },
   { key: "hat-embroidered", label: "Hat — Embroidered", labelZh: "帽子 · 刺绣", emoji: "🧢", shots: 3 },
   { key: "beanie-embroidered", label: "Beanie — Embroidered", labelZh: "毛线帽 · 刺绣", emoji: "🧶", shots: 3 },
+  { key: "blanket-embroidered", label: "Blanket — Embroidered", labelZh: "毛毯 · 刺绣", emoji: "🧣", shots: 3 },
 ];
 
 // Garment colors. `value` is the wording sent to the model; `hex` is just the
@@ -48,9 +50,6 @@ const SIZES = [
 // UI copy for both languages. Switching `lang` re-renders everything.
 const STRINGS = {
   en: {
-    navHow: "How it works",
-    navStudio: "Studio",
-    navCta: "Open the studio",
     heroBadge: "Apollo · AI Merch Mockups",
     heroTitle1: "Your logo on real merch,",
     heroTitle2: "rendered in seconds.",
@@ -85,7 +84,6 @@ const STRINGS = {
     imagePlural: "images",
     download: "Download",
     zoomHint: "Click image to zoom · click outside or Esc to close",
-    langButton: "中文",
     errNoLogo: "Upload a logo first.",
     errNoSelection: "Select at least one product.",
     errNotImage: "Please choose an image file.",
@@ -123,12 +121,8 @@ const STRINGS = {
         d: "Every embroidered piece gets a product shot, a stitch-level close-up, and an on-model photo — ready to send.",
       },
     ],
-    footerNote: "Demo build. All mockups are AI-generated previews, not production samples.",
   },
   zh: {
-    navHow: "工作流程",
-    navStudio: "工作台",
-    navCta: "打开工作台",
     heroBadge: "Apollo · AI 服装样机",
     heroTitle1: "您的 Logo 穿上真实商品，",
     heroTitle2: "几秒内完成渲染。",
@@ -163,7 +157,6 @@ const STRINGS = {
     imagePlural: "张图片",
     download: "下载",
     zoomHint: "点击图片放大 · 点击空白处或按 Esc 关闭",
-    langButton: "English",
     errNoLogo: "请先上传 Logo。",
     errNoSelection: "请至少选择一个产品。",
     errNotImage: "请选择图片文件。",
@@ -200,7 +193,6 @@ const STRINGS = {
         d: "每件刺绣产品都包含产品图、针脚级细节特写和模特上身图 —— 可直接发给客户。",
       },
     ],
-    footerNote: "演示版本。所有样机均为 AI 生成的预览图，并非实际生产样品。",
   },
 };
 
@@ -253,15 +245,6 @@ function IconExpand(props) {
       <polyline points="9 21 3 21 3 15" />
       <line x1="21" y1="3" x2="14" y2="10" />
       <line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
-  );
-}
-function IconGlobe(props) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="10" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
   );
 }
@@ -501,45 +484,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground">
-      {/* ---------- Sticky nav ---------- */}
-      <header className="sticky top-0 z-40 border-b border-zinc-200/70 bg-white/70 backdrop-blur-md dark:border-zinc-800/70 dark:bg-zinc-950/70">
-        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <a href="#top" className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
-              <IconSparkles />
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">Apollo</span>
-            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-600 dark:border-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-400">
-              Studio
-            </span>
-          </a>
-          <nav className="hidden items-center gap-6 text-sm text-zinc-600 dark:text-zinc-400 md:flex">
-            <a href="#how" className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">
-              {t.navHow}
-            </a>
-            <a href="#studio" className="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">
-              {t.navStudio}
-            </a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLang((l) => (l === "en" ? "zh" : "en"))}
-              className="flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-indigo-500"
-              aria-label="Toggle language"
-            >
-              <IconGlobe />
-              {t.langButton}
-            </button>
-            <a
-              href="#studio"
-              className="hidden rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:block"
-            >
-              {t.navCta}
-            </a>
-          </div>
-        </div>
-      </header>
+      <SiteHeader lang={lang} setLang={setLang} />
 
       <main id="top">
         {/* ---------- Hero ---------- */}
@@ -1119,18 +1064,7 @@ export default function Home() {
         </section>
       </main>
 
-      {/* ---------- Footer ---------- */}
-      <footer className="border-t border-zinc-200/70 py-8 dark:border-zinc-800/70">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-3 px-4 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white">
-              <IconSparkles width="11" height="11" />
-            </span>
-            <span className="text-sm font-semibold tracking-tight">Apollo Studio</span>
-          </div>
-          <p className="text-xs text-zinc-400">{t.footerNote}</p>
-        </div>
-      </footer>
+      <SiteFooter lang={lang} />
 
       {/* ---------- Lightbox — click image to toggle zoom; backdrop/Esc to close ---------- */}
       {lightbox && (

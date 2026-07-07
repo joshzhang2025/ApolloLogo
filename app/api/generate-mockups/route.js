@@ -173,7 +173,7 @@ const NEGATIVE_METHOD = {
 // The logo must occupy the SAME fraction of the garment in every shot. A bare
 // "small/large" is interpreted differently per image, so we anchor size to a
 // concrete proportion of the garment and append this identical clause to all
-// of a product's prompts.
+// of a product's prompts. This wording is for a CENTERED front print.
 const SIZE_WORDING = {
   small: "The logo is small, spanning about 15% of the garment's front width",
   medium: "The logo is medium, spanning about 30% of the garment's front width",
@@ -184,6 +184,24 @@ function sizeClause(size) {
   return ` ${spec}. Render the logo at this exact same scale relative to the garment in every shot.`;
 }
 
+// A left-chest / pocket logo is ALWAYS small and sized to fit that little panel,
+// so it is sized in absolute inches (by the logo's WIDTH) rather than as a % of
+// the whole garment. This is what fixes wide/horizontal logos (e.g. a wordmark
+// with a long tagline): "30% of the front width" made them too wide for the
+// left-chest zone, so the model centered them. Sizing by a small fixed width and
+// telling it to scale wide logos DOWN keeps them on the chest where they belong.
+const POCKET_SIZE_WORDING = { small: "about 2.5 inches", medium: "about 3.5 inches", large: "about 4.5 inches" };
+function pocketSizeClause(size) {
+  const spec = POCKET_SIZE_WORDING[size] || POCKET_SIZE_WORDING.medium;
+  return (
+    ` The logo is a small left-chest logo, ${spec} wide at its widest point, scaled while preserving its ` +
+    `exact original aspect ratio. A wide or horizontal logo must be scaled DOWN so its full width still ` +
+    `fits within the small left-chest area — it must not be enlarged, stretched, cropped, or moved toward ` +
+    `the center of the garment to make room. Keep the logo at this exact same small scale and left-chest ` +
+    `position in every shot.`
+  );
+}
+
 // How each placement choice reads in the prompt. Only applied to `placeable`
 // products (shirts); hats/beanies always use their natural `defaultPlacement`
 // (front panel / cuff), so the pocket/center choice never lands on them.
@@ -192,9 +210,12 @@ function sizeClause(size) {
 // exact same spot.
 const PLACEMENT_WORDING = {
   pocket:
-    "in the classic left-chest pocket position: on the WEARER'S upper-left chest, which appears on the " +
-    "RIGHT side of the image when the garment faces the camera, vertically about 2–3 inches below the " +
-    "collar seam, horizontally centered between the placket line and the side seam",
+    "as a small left-chest logo positioned on the WEARER'S upper-left chest — which appears on the RIGHT " +
+    "half of the image when the garment faces the camera — vertically about 2–3 inches below the collar " +
+    "seam, sitting entirely on that left-chest panel between the vertical center placket and the sleeve " +
+    "seam. It must NOT be centered on the garment, must NOT span across the chest, and must NOT cross the " +
+    "vertical center line, regardless of the logo's shape. A wide or horizontal logo stays in this same " +
+    "left-chest spot, just scaled down to fit",
   center:
     "perfectly centered horizontally on the front of the garment, at mid-chest height, the logo's " +
     "center sitting on the garment's vertical midline",
@@ -252,6 +273,31 @@ const PRESETS = {
     views: ["product", "closeup", "model"],
     scene: "a crisp autumn street with warm golden light and soft bokeh, softly blurred behind the model",
   },
+  // A blanket isn't worn, so it overrides the two body-based shots: `productShot`
+  // replaces the flat framing with a folded-blanket arrangement (logo on the fold),
+  // and `modelUsage` replaces "worn by a model" with the blanket being used. The
+  // logo sits in the fixed bottom-right corner (not placeable, so no pocket/center).
+  "blanket-embroidered": {
+    label: "Blanket — Embroidered",
+    defaultColor: "cream",
+    garment: "a {COLOR} soft fleece throw blanket",
+    decor: "EMBROIDERED",
+    defaultPlacement: "in the bottom-right corner of the blanket, a few inches in from the corner edges",
+    method: "embroidery",
+    negative: "embroidery",
+    views: ["product", "closeup", "model"],
+    scene: "a cozy living room with a soft sofa and warm lamp light, softly blurred in the background",
+    productShot:
+      "Professional e-commerce product photography of the blanket loosely folded into a neat rectangle " +
+      "and laid flat, presenting one smooth, flat top surface with NO flipped-over or triangular corner " +
+      "folds. The embroidered logo sits fully on that flat, smooth top surface toward the lower-right, " +
+      "lying completely flat and fully visible — never on a fold line, crease, edge, or turned-over " +
+      "corner. Straight-on slightly elevated angle, the whole folded blanket in frame, even soft studio " +
+      "lighting, no harsh shadows, sharp focus on the stitching.",
+    modelUsage:
+      "draped over the shoulders of a real person cozily relaxing on a sofa, the embroidered corner " +
+      "hanging in clear view near the front",
+  },
 };
 
 // Compose one shot's full prompt from the blocks above.
@@ -265,7 +311,16 @@ function buildPrompt(preset, view, { color, placement, size, sceneOn }) {
   // always use their natural spot so "pocket/center" never lands on a cap or cuff.
   const placementText =
     (preset.placeable && placement && PLACEMENT_WORDING[placement]) || preset.defaultPlacement;
-  const sizeAdj = size === "small" ? "small " : size === "large" ? "large " : "";
+
+  // Pocket placement is always a small left-chest logo sized in inches (so wide
+  // logos scale down to fit instead of drifting to center). Everything else scales
+  // by % of the garment's front width. `sizing` is identical across a product's
+  // shots so scale/position stay locked between them.
+  const isPocket = preset.placeable && placement === "pocket";
+  const sizing = isPocket ? pocketSizeClause(size) : sizeClause(size);
+  // No size adjective for pocket ("small large logo" would contradict) — the
+  // pocket sizing clause fully describes it.
+  const sizeAdj = isPocket ? "" : size === "small" ? "small " : size === "large" ? "large " : "";
 
   // Model shot — one flowing lifestyle sentence, like the original. It uses the
   // short method note (not the heavy macro block) and swaps in the lifestyle
@@ -277,24 +332,32 @@ function buildPrompt(preset, view, { color, placement, size, sceneOn }) {
         ? preset.scene
         : "a plain, empty seamless light-grey studio backdrop, completely blank with no scenery, " +
           "props, furniture, windows, or background objects of any kind";
+    // Wearable products are "worn by a model"; non-wearables (e.g. a blanket)
+    // supply their own `modelUsage` describing how the item is used instead.
+    const subjectPhrase = preset.modelUsage
+      ? `${garment} ${preset.modelUsage}`
+      : `a real human model wearing ${garment}`;
     return (
-      "Professional high-resolution lifestyle photo of a real human model wearing " +
-      garment +
+      "Professional high-resolution lifestyle photo of " +
+      subjectPhrase +
       `, this ${sizeAdj}logo ${preset.decor} ${placementText}. ` +
       METHOD_SHORT[preset.method] +
       ` Natural relaxed pose, flattering studio lighting, ${background}, shallow depth of field, ` +
       "photorealistic." +
-      sizeClause(size)
+      sizing
     );
   }
 
   // Flat shots (product, closeup) — the detailed, texture-forward composable prompt.
+  // A product can override the flat framing (e.g. a blanket shown folded) via
+  // `productShot`; the close-up always uses the generic macro framing.
+  const flatFraming = view === "product" && preset.productShot ? preset.productShot : SHOT_TYPES[view];
   const subject = `The garment is ${garment} with this ${sizeAdj}logo ${preset.decor} ${placementText}.`;
   const negatives = ` Strictly avoid: ${NEGATIVE_BASE}${NEGATIVE_METHOD[preset.negative] || ""}.`;
   return (
-    SHOT_TYPES[view] +
+    flatFraming +
     " " + subject +
-    sizeClause(size) +
+    sizing +
     " " + METHODS[preset.method] +
     " " + LIGHTING_BG +
     " " + QUALITY_TAGS +
