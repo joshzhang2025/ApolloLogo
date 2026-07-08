@@ -26,7 +26,9 @@ const ASPECT_RATIO = "3:4";
 // This is the main lever for keeping the logo faithful between images, and for
 // stopping the model from "auto-completing" a recognizable brand mark with
 // remembered taglines/slogans (e.g. adding "Think Different" to an Apple logo).
-// The ONE allowed change to logo colors is the contrast rule (CONTRAST_ADAPTATION).
+// The ONE allowed change to logo colors is the contrast rule — normally the
+// per-request colorSpecClause (exact hexes, computed below), falling back to
+// the text-only CONTRAST_ADAPTATION when the client couldn't extract a palette.
 const LOGO_FIDELITY =
   " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the logo reference image — " +
   "same shapes, proportions, line weights, and text, and the same colors as the reference (except " +
@@ -55,11 +57,14 @@ const PRODUCT_REFERENCE =
   "here. Ignore the product reference photo's background, framing, camera angle, and lighting; reproduce " +
   "only the product itself.";
 
-// Appended to EVERY prompt, after PRODUCT_REFERENCE. Real embroidery/screen-print
-// shops recolor any part of a design that matches the product (and would vanish into
-// it) to a contrasting thread/ink — e.g. black outlines become white on a black shirt.
-// This tells the model to do the same, for ANY product color, while leaving parts
-// that already contrast alone and never touching the logo's shapes or layout.
+// FALLBACK ONLY — used when the client couldn't extract a logo palette (e.g.
+// canvas read failure). Real embroidery/screen-print shops recolor any part of
+// a design that matches the product (and would vanish into it) to a contrasting
+// thread/ink — e.g. black outlines become white on a black shirt. This tells the
+// model to do the same, for ANY product color. The problem this exists to solve
+// — that recolor/no-recolor is a judgment call the model can make differently
+// per shot — is exactly what colorSpecClause below fixes by computing the
+// substitution once, in code, and handing the model a closed hex-to-hex table.
 const CONTRAST_ADAPTATION =
   " CONTRAST FOR VISIBILITY: The finished logo must stay clearly visible against the product's color " +
   "as shown in the product reference photo. If any part of the logo is close in color to the product — " +
@@ -72,6 +77,81 @@ const CONTRAST_ADAPTATION =
   "color, and change nothing about the logo's shapes, proportions, layout, or text — adjust only the " +
   "specific colors that would otherwise disappear. The whole logo must read crisply and identically " +
   "across all shots.";
+
+// ---------------------------------------------------------------------------
+// DETERMINISTIC COLOR SPEC — the actual fix for cross-shot color drift.
+// The client (studio/page.js, via colorUtils.js) extracts the logo's exact hex
+// palette and samples the product's color where the logo will sit, and sends
+// both here. Instead of asking the model to judge "is this low-contrast?" and
+// "what should I substitute?" separately for every shot — a judgment call that
+// can land differently each time — we compute the substitution ONCE in code
+// (WCAG-style contrast ratio) and hand every shot the identical closed hex-to-
+// hex table. There is nothing left for the model to decide.
+// ---------------------------------------------------------------------------
+
+// Below this contrast ratio a logo color is treated as "would blend into the
+// product" and gets substituted. 1.8 is intentionally low (WCAG AA text uses
+// 4.5) — this only catches genuinely near-invisible pairings (e.g. near-black
+// on black), not merely similar hues that would still read fine.
+const CONTRAST_THRESHOLD = 1.8;
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
+}
+
+// WCAG relative luminance (sRGB → linear, then the standard luma weights).
+function relativeLuminance([r, g, b]) {
+  const toLinear = (c) => {
+    const cs = c / 255;
+    return cs <= 0.03928 ? cs / 12.92 : Math.pow((cs + 0.055) / 1.055, 2.4);
+  };
+  const [rl, gl, bl] = [r, g, b].map(toLinear);
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+}
+
+// WCAG contrast ratio, 1 (identical) to 21 (black vs white).
+function contrastRatio(hexA, hexB) {
+  const la = relativeLuminance(hexToRgb(hexA));
+  const lb = relativeLuminance(hexToRgb(hexB));
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+// Build the closed color-spec clause from the client-extracted logo palette and
+// sampled product color. Returns null when either input is missing/invalid, so
+// the caller can fall back to CONTRAST_ADAPTATION.
+function colorSpecClause(logoColors, productColor) {
+  if (!Array.isArray(logoColors) || !logoColors.length || !productColor) return null;
+
+  // Single fixed contrast color for the whole logo (matches the old policy):
+  // white on a dark product, black on a light one.
+  const contrastTarget = relativeLuminance(hexToRgb(productColor)) > 0.5 ? "#000000" : "#FFFFFF";
+
+  const mappings = logoColors.map(({ hex }) => {
+    const adapted = contrastRatio(hex, productColor) < CONTRAST_THRESHOLD;
+    return { from: hex, to: adapted ? contrastTarget : hex, adapted };
+  });
+
+  const lines = mappings
+    .map((m) =>
+      m.adapted
+        ? `${m.from} → render as ${m.to} (pre-computed so it stays visible on this product)`
+        : `${m.from} (unchanged — already contrasts well against this product)`
+    )
+    .join("; ");
+
+  return (
+    " EXACT LOGO COLORS (final — do not recompute): The logo consists of exactly these colors, already " +
+    `checked against the product's actual color for visibility: ${lines}. Render each color EXACTLY as ` +
+    "specified above, in EVERY shot, with zero variation between shots — the same hex value must appear " +
+    "in the product, close-up, and on-model images alike. Never substitute, tint, lighten, darken, blend, " +
+    "add a gradient to, or otherwise reinterpret any of these colors, and never make a different contrast " +
+    "decision in one shot than in another — this palette was already computed correctly and is final; do " +
+    "not re-derive or re-judge it from the logo reference image."
+  );
+}
 
 // Appended to EVERY prompt. Every shot must show the SAME physical item —
 // one product, decorated once, photographed from different distances.
@@ -92,15 +172,18 @@ const MARKER_REFERENCE =
   "annotation only — it must NOT appear anywhere in the mockup. The finished product has no circle, " +
   "ring, outline, or marking of any kind; only the logo decoration itself.";
 
-// Appended to the close-up and on-model prompts when the flat product shot for
-// the same request succeeded. That rendered shot rides along as the LAST
-// reference image, and this clause tells the model to copy the decorated product
-// from it exactly — the strongest available lock for identical placement/size/color.
+// Appended to every non-anchor shot when the anchor shot (the first requested
+// view, see generateShotSet) succeeded. That rendered shot rides along as the
+// LAST reference image, and this clause tells the model to copy the decorated
+// product from it exactly — the strongest available lock for identical
+// placement/size/color, and (with the addition below) color specifically.
 const DECORATED_MATCH =
   " DECORATED MATCH: The LAST reference image provided is a photo of this exact product already " +
   "decorated with the logo. Reproduce the decorated product from that last reference EXACTLY: " +
   "identical logo placement on the product, identical logo size relative to the product, identical " +
-  "logo colors, identical product color and style. Do NOT copy that reference's camera angle, " +
+  "logo colors, identical product color and style. The logo colors shown in that last reference are " +
+  "AUTHORITATIVE — match them pixel-for-pixel rather than re-deriving colors from the original logo " +
+  "artwork or making a fresh contrast judgment. Do NOT copy that reference's camera angle, " +
   "framing, crop, lighting, or background — only the product itself and its decoration must match it " +
   "perfectly, as if the very same item were photographed again.";
 
@@ -354,7 +437,7 @@ async function fetchWithRetry(url, init) {
   }
 }
 
-async function generateOne(view, prompt, references, seed) {
+async function generateOne(view, prompt, references, seed, colorClause) {
   const res = await fetchWithRetry("https://openrouter.ai/api/v1/images", {
     method: "POST",
     headers: {
@@ -363,7 +446,7 @@ async function generateOne(view, prompt, references, seed) {
     },
     body: JSON.stringify({
       model: MODEL,
-      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + PRODUCT_REFERENCE + CONTRAST_ADAPTATION,
+      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + PRODUCT_REFERENCE + colorClause,
       seed,
       resolution: RESOLUTION,
       aspect_ratio: ASPECT_RATIO,
@@ -381,13 +464,15 @@ async function generateOne(view, prompt, references, seed) {
   return { view, ok: true, images: (data.data ?? []).map((d) => d.b64_json) };
 }
 
-// Generate every requested shot, chained for consistency: when the flat product
-// shot is among the requested views it is generated FIRST, and its rendered
-// result is then passed as a THIRD reference image to the close-up and on-model
-// shots (with DECORATED_MATCH), so all shots show the identical item — same logo
-// placement, size, and colors. If the anchor shot fails (or wasn't requested),
-// the remaining shots fall back to logo+product references only.
-// Never throws; every failure is reported as a per-view result object.
+// Generate every requested shot, chained for consistency: the FIRST requested
+// view (in canonical VIEW_ORDER — `views` is already filtered/sorted into that
+// order by the caller) is generated as the anchor, and its rendered result is
+// then passed as the LAST reference image to every other requested shot (with
+// DECORATED_MATCH), so all shots show the identical item — same logo placement,
+// size, and colors. This works no matter which views were requested: a
+// closeup+model run anchors on the close-up; a model-only run has no "rest" to
+// chain. If the anchor shot fails, the remaining shots fall back to their base
+// references only. Never throws; every failure is reported as a per-view result.
 async function generateShotSet(views, opts) {
   const seed = seedFor(opts.productImage.slice(-256)); // same seed for every shot
   // Reference order matters — the prompt clauses name them positionally:
@@ -396,21 +481,19 @@ async function generateShotSet(views, opts) {
   const baseRefs = opts.markerImage
     ? [opts.logo, opts.productImage, opts.markerImage]
     : [opts.logo, opts.productImage];
+  // Computed ONCE per request (not per shot) — every shot gets the identical
+  // color instruction, which is the whole point: no shot-to-shot judgment drift.
+  const colorClause = colorSpecClause(opts.logoColors, opts.productColor) || CONTRAST_ADAPTATION;
   const safe = (view, prompt, references) =>
-    generateOne(view, prompt, references, seed).catch((e) => {
+    generateOne(view, prompt, references, seed, colorClause).catch((e) => {
       const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
       return { view, ok: false, error: detail };
     });
 
-  const results = [];
-  let anchorUrl = null;
-  if (views.includes("product")) {
-    const anchor = await safe("product", buildPrompt("product", opts), baseRefs);
-    if (anchor.ok && anchor.images?.[0]) anchorUrl = `data:image/png;base64,${anchor.images[0]}`;
-    results.push(anchor);
-  }
+  const [anchorView, ...restViews] = views;
+  const anchor = await safe(anchorView, buildPrompt(anchorView, opts), baseRefs);
+  const anchorUrl = anchor.ok && anchor.images?.[0] ? `data:image/png;base64,${anchor.images[0]}` : null;
 
-  const restViews = views.filter((v) => v !== "product");
   const rest = await Promise.all(
     restViews.map((view) =>
       safe(
@@ -420,7 +503,7 @@ async function generateShotSet(views, opts) {
       )
     )
   );
-  return [...results, ...rest];
+  return [anchor, ...rest];
 }
 
 export async function POST(req) {
@@ -429,8 +512,10 @@ export async function POST(req) {
       return Response.json({ error: "Server is missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
-    const { logo, productImage, method, views, placement, size, scene, marker, markerImage } =
-      await req.json();
+    const {
+      logo, productImage, method, views, placement, size, scene, marker, markerImage,
+      logoColors, productColor,
+    } = await req.json();
     if (!logo) return Response.json({ error: "No logo provided" }, { status: 400 });
     if (!productImage) return Response.json({ error: "No product photo provided" }, { status: 400 });
     if (!METHODS[method]) return Response.json({ error: "Invalid decoration method" }, { status: 400 });
@@ -441,6 +526,15 @@ export async function POST(req) {
       marker &&
       typeof markerImage === "string" &&
       [marker.x, marker.y, marker.r].every((n) => typeof n === "number" && isFinite(n));
+
+    // Client-extracted color inputs (see colorUtils.js) — loosely validated and
+    // silently dropped if malformed, so a bad payload just falls back to
+    // CONTRAST_ADAPTATION rather than erroring the whole request.
+    const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+    const cleanLogoColors = Array.isArray(logoColors)
+      ? logoColors.filter((c) => c && typeof c.hex === "string" && HEX_RE.test(c.hex))
+      : [];
+    const cleanProductColor = typeof productColor === "string" && HEX_RE.test(productColor) ? productColor : null;
 
     // Requested shots, in canonical order; default to all three.
     const requested = Array.isArray(views) && views.length ? views : VIEW_ORDER;
@@ -458,6 +552,8 @@ export async function POST(req) {
       sceneOn: scene,
       marker: hasMarker ? marker : null,
       markerImage: hasMarker ? markerImage : null,
+      logoColors: cleanLogoColors.length ? cleanLogoColors : null,
+      productColor: cleanProductColor,
     };
     const results = await generateShotSet(shotViews, opts);
     return Response.json({ results });

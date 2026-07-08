@@ -5,6 +5,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteHeader, SiteFooter } from "../SiteChrome";
+import { useStudioState } from "../StudioStateContext";
+import { extractPalette, sampleRegionColor } from "../colorUtils";
 
 // Decoration methods. The uploaded product photo defines the product itself;
 // this picks how the logo is applied to it.
@@ -390,7 +392,7 @@ function MarkerEditor({ image, marker, onChange }) {
       }
       return;
     }
-    dragRef.current = { mode: "draw", cx: p.x, cy: p.y };
+    dragRef.current = { mode: "draw", cx: p.x, cy: p.y, r: 0 };
     setDraft({ x: p.x, y: p.y, r: 0 });
   };
 
@@ -406,9 +408,11 @@ function MarkerEditor({ image, marker, onChange }) {
     if (!d) return;
     const p = pointAt(e);
     if (d.mode === "draw") {
-      // radius in on-screen px, normalized to the photo's width
+      // radius in on-screen px, normalized to the photo's width. Kept on the
+      // ref (not just state) so onPointerUp can read the final value synchronously.
       const r = Math.hypot((p.x - d.cx) * p.w, (p.y - d.cy) * p.h) / p.w;
-      setDraft({ x: d.cx, y: d.cy, r: Math.min(r, 0.5) });
+      d.r = Math.min(r, 0.5);
+      setDraft({ x: d.cx, y: d.cy, r: d.r });
     } else if (d.mode === "move") {
       onChange({
         ...marker,
@@ -425,10 +429,12 @@ function MarkerEditor({ image, marker, onChange }) {
     const d = dragRef.current;
     dragRef.current = null;
     if (d?.mode === "draw") {
-      setDraft((dr) => {
-        if (dr) onChange({ x: dr.x, y: dr.y, r: dr.r < 0.02 ? 0.1 : dr.r }); // click = standard spot
-        return null;
-      });
+      // Read the final circle off the ref (always in sync) rather than reaching
+      // into `draft` via a setDraft functional updater — calling onChange (the
+      // parent's setMarker) from inside a setState updater runs it during this
+      // component's render phase and trips React's cross-component setState check.
+      onChange({ x: d.cx, y: d.cy, r: d.r < 0.02 ? 0.1 : d.r }); // click = standard spot
+      setDraft(null);
     }
   };
 
@@ -461,25 +467,28 @@ function MarkerEditor({ image, marker, onChange }) {
 
 export default function Studio() {
   const [lang, setLang] = useState("en");
-  const [logo, setLogo] = useState(null);
-  const [logoName, setLogoName] = useState("");
-  const [productImage, setProductImage] = useState(null);
-  const [productImageName, setProductImageName] = useState("");
-  const [method, setMethod] = useState("embroidery"); // embroidery | screenprint
-  const [views, setViews] = useState(VIEWS.map((v) => v.key)); // which shots to generate
-  const [placement, setPlacement] = useState("default"); // logo position: default | pocket | center
-  const [size, setSize] = useState("medium"); // logo size: small | medium | large
-  const [marker, setMarker] = useState(null); // user-drawn circle { x, y, r } on the product photo, or null
+  // Work-in-progress state (uploaded images, settings, drawn circle, and the
+  // generation history) lives in a layout-level context so it survives leaving
+  // and returning to /studio — see StudioStateContext.js. Only ephemeral UI
+  // state (open modals, current error, lightbox) stays local to this page.
+  const {
+    logo, setLogo,
+    logoName, setLogoName,
+    productImage, setProductImage,
+    productImageName, setProductImageName,
+    method, setMethod,
+    views, setViews,
+    placement, setPlacement,
+    size, setSize,
+    scene, setScene,
+    marker, setMarker,
+    batches, setBatches,
+    batchSeq,
+  } = useStudioState();
   const [markerModal, setMarkerModal] = useState(false); // circle-editor window open?
-  const [scene, setScene] = useState(false); // on-model shots get a lifestyle background when true
-  // Every Generate run is appended here as its own immutable batch — nothing is
-  // overwritten, so changing the images/settings and generating again keeps every
-  // photo you've already made. Newest batch is first.
-  const [batches, setBatches] = useState([]);
   const [error, setError] = useState("");
   const [lightbox, setLightbox] = useState(null); // { src, caption, filename } | null
   const [zoomed, setZoomed] = useState(false);
-  const batchSeq = useRef(0); // monotonic id for each generation batch
   const resultsRef = useRef(null); // scrolled into view on mobile when generating
   const scrollRef = useRef(null); // lightbox scroll container
   const zoomImgRef = useRef(null); // enlarged image
@@ -594,9 +603,15 @@ export default function Studio() {
         // A drawn circle travels two ways: as numbers (for the prompt) and as an
         // annotated copy of the product photo (as a reference image), rendered
         // here from the batch's own captured photo + marker so Regenerate works.
-        const markerImage = batch.settings.marker
-          ? await makeMarkerImage(runProduct, batch.settings.marker)
-          : null;
+        // logoColors/productColor give the backend an exact, deterministic color
+        // palette instead of leaving color-matching to per-shot model judgment —
+        // see colorSpecClause in route.js. Extraction failures fall back to null,
+        // which makes the backend fall back to its old text-only color guidance.
+        const [markerImage, logoColors, productColor] = await Promise.all([
+          batch.settings.marker ? makeMarkerImage(runProduct, batch.settings.marker) : null,
+          extractPalette(runLogo).catch(() => null),
+          sampleRegionColor(runProduct, batch.settings.marker).catch(() => null),
+        ]);
         const res = await fetch("/api/generate-mockups", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -610,6 +625,8 @@ export default function Studio() {
             scene: batch.settings.scene,
             marker: batch.settings.marker,
             markerImage,
+            logoColors,
+            productColor,
           }),
         });
         const data = await res.json();
@@ -623,7 +640,7 @@ export default function Studio() {
         );
       }
     },
-    [t]
+    [t, batchSeq, setBatches]
   );
 
   const generate = () =>
