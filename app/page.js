@@ -3,8 +3,8 @@
 // lives at /studio; this page just introduces the product and links there.
 
 "use client";
-import { useState } from "react";
 import { SiteHeader, SiteFooter } from "./SiteChrome";
+import { useStudioState } from "./StudioStateContext";
 
 // UI copy for both languages. Switching `lang` re-renders everything.
 const STRINGS = {
@@ -76,7 +76,7 @@ function IconSparkles(props) {
 }
 
 export default function Home() {
-  const [lang, setLang] = useState("en");
+  const { lang, setLang } = useStudioState();
   const t = STRINGS[lang];
 
   return (
@@ -187,20 +187,25 @@ export default function Home() {
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">{t.howEyebrow}</p>
             <h2 className="mt-2 max-w-lg text-2xl font-semibold tracking-tight sm:text-3xl">{t.howTitle}</h2>
-            <div className="mt-8 grid grid-cols-1 gap-4 sm:mt-10 sm:grid-cols-3">
+
+            {/* Workflow diagram (source: /apollo-workflow-h.excalidraw) */}
+            <figure className="mt-8 overflow-x-auto rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-white sm:mt-10 sm:p-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/apollo-workflow-h.svg"
+                alt={t.howTitle}
+                className="mx-auto block w-full min-w-[900px]"
+              />
+            </figure>
+
+            {/* Accessible text fallback of the three steps */}
+            <ol className="sr-only">
               {t.howSteps.map((step, i) => (
-                <div
-                  key={i}
-                  className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60"
-                >
-                  <span className="font-mono text-xs font-semibold text-indigo-500">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <h3 className="mt-3 text-base font-semibold">{step.t}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{step.d}</p>
-                </div>
+                <li key={i}>
+                  {String(i + 1).padStart(2, "0")} — {step.t}: {step.d}
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
         </section>
       </main>

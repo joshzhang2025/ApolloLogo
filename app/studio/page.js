@@ -466,12 +466,13 @@ function MarkerEditor({ image, marker, onChange }) {
 }
 
 export default function Studio() {
-  const [lang, setLang] = useState("en");
-  // Work-in-progress state (uploaded images, settings, drawn circle, and the
-  // generation history) lives in a layout-level context so it survives leaving
-  // and returning to /studio — see StudioStateContext.js. Only ephemeral UI
-  // state (open modals, current error, lightbox) stays local to this page.
+  // Work-in-progress state (uploaded images, settings, drawn circle, the
+  // generation history, and the UI language) lives in a layout-level context
+  // so it survives leaving and returning to /studio — see StudioStateContext.js.
+  // Only ephemeral UI state (open modals, current error, lightbox) stays local
+  // to this page.
   const {
+    lang, setLang,
     logo, setLogo,
     logoName, setLogoName,
     productImage, setProductImage,
@@ -497,11 +498,6 @@ export default function Studio() {
   const t = STRINGS[lang];
   const viewLabel = (view) =>
     view === "model" ? t.viewModel : view === "closeup" ? t.viewCloseup : t.viewProduct;
-
-  // Keep the document language in sync with the UI language.
-  useEffect(() => {
-    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-  }, [lang]);
 
   function openLightbox(src, caption, filename) {
     setZoomed(false);

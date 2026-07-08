@@ -8,7 +8,7 @@
 // reload — that state is in memory, not storage, because the generated images
 // are large base64 blobs that would blow past sessionStorage's quota.)
 "use client";
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 // The three shot types, in canonical order — the default is "generate all three".
 const DEFAULT_VIEWS = ["product", "closeup", "model"];
@@ -16,6 +16,13 @@ const DEFAULT_VIEWS = ["product", "closeup", "model"];
 const StudioStateContext = createContext(null);
 
 export function StudioStateProvider({ children }) {
+  // UI language — lives here (not per-page useState) so it survives navigating
+  // between "/", "/studio", and "/simplify" instead of resetting to English.
+  const [lang, setLang] = useState("en");
+  useEffect(() => {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  }, [lang]);
+
   const [logo, setLogo] = useState(null);
   const [logoName, setLogoName] = useState("");
   const [productImage, setProductImage] = useState(null);
@@ -35,6 +42,7 @@ export function StudioStateProvider({ children }) {
   const batchSeq = useRef(0);
 
   const value = {
+    lang, setLang,
     logo, setLogo,
     logoName, setLogoName,
     productImage, setProductImage,
