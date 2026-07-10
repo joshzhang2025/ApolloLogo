@@ -238,11 +238,24 @@ const METHODS = {
     "the main elements may be raised 3D puff embroidery; if it is a stretch knit, use flat " +
     "embroidery following the knit texture with moderate stitch density.",
   screenprint:
-    "Rendered as screen-printed ink: flat, opaque ink layer sitting on top of the fabric surface, " +
-    "sharp clean vector-like edges, slight visible ink texture on close inspection, no thread or " +
-    "stitch texture of any kind, colors as flat distinct spot-color layers, ink slightly absorbed " +
-    "into the fabric grain on light products and sitting more visibly on top with an underbase " +
-    "on dark products.",
+    "Rendered as genuine screen-printed ink: an opaque ink layer bonded into the fabric surface, " +
+    "sharp clean edges, each logo color reproduced as one solid, flat, evenly-inked area of that exact " +
+    "color (no gradients), with a matte (non-glossy) finish, slight visible ink texture with the fabric " +
+    "weave showing faintly through the ink on close inspection, no thread or stitch texture of any kind. " +
+    "COLORS: keep the ink colors EXACTLY faithful to the logo's reference colors, and render those colors " +
+    "IDENTICALLY in every shot — no hue shift, tint, fade, brightness change, or color re-separation from " +
+    "one shot to the next. On light products the ink absorbs slightly into the fabric grain, and on dark " +
+    "products it sits on a solid underbase — but this affects only the surface texture and coverage, NEVER " +
+    "the printed color, which stays the exact reference hue in every shot. " +
+    "CRITICAL — the print is PART OF the product, not a sticker, decal, or patch laid on top of it: it " +
+    "must follow the product's actual surface, curving and bending with the fabric's contours, folds, " +
+    "wrinkles, and seams, with no drop shadow, no outline, and no floating or detached edge. If the " +
+    "product is a structured or curved cap, the print wraps around and conforms to the curved crown " +
+    "panel in correct perspective, distorting naturally with the curvature rather than staying flat. " +
+    "If the product is a thick fleece, sherpa, or knit blanket or any other high-pile fabric, the ink " +
+    "sits on the raised nap and reads with a soft, slightly broken texture that follows the pile — " +
+    "never a glass-flat decal. Otherwise, on a flat woven garment, keep it a clean opaque spot-color " +
+    "print integrated into the weave.",
 };
 
 // Short one-line method note for the on-model shot. The full METHODS blocks above
@@ -250,7 +263,7 @@ const METHODS = {
 // model shot gets this lighter descriptor instead.
 const METHOD_SHORT = {
   embroidery: "Realistic raised satin-stitch embroidery with visible threads.",
-  screenprint: "Flat matte screen-printed ink finish.",
+  screenprint: "Matte screen-printed ink finish in the logo's exact colors, printed into the fabric and following the product's contours and folds (not a sticker on top).",
 };
 
 // What the decoration is called inside the prompt sentences.
@@ -275,7 +288,9 @@ const NEGATIVE_BASE =
   "shape, low resolution, cropped incorrectly";
 const NEGATIVE_METHOD = {
   embroidery: ", glossy print sheen, smooth gradient fills, perfectly flat texture, printed-looking edges",
-  screenprint: ", raised thread texture, stitching, puckered fabric",
+  screenprint:
+    ", raised thread texture, stitching, puckered fabric, sticker or decal or patch look, glossy " +
+    "plastic sheen, print floating flat over the fabric without following its folds and curvature",
 };
 
 // The logo must occupy the SAME fraction of the product in every shot. A bare
