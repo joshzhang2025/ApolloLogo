@@ -208,10 +208,18 @@ function seedFor(key) {
 //    - closeup: what embroidery jobs get approved/rejected on — stitch quality
 const SHOT_TYPES = {
   product:
-    "Professional e-commerce product photography, the product shown flat-lay or on an invisible " +
-    "ghost mannequin (or neatly arranged if it is not a wearable), straight-on centered angle, " +
-    "entire product in frame, even soft studio lighting, no harsh shadows, high resolution, " +
-    "sharp focus across the whole product.",
+    "Premium studio e-commerce product photography, freshly shot for a commercial catalog. If the " +
+    "product is wearable, present it on an invisible ghost mannequin so it has natural three-dimensional " +
+    "body and volume — never laid flat; if it is not wearable, style it standing upright / arranged to " +
+    "show real dimension. Straight-on centered front angle, entire product in frame. Light it with a soft " +
+    "directional key light plus gentle fill so there is subtle dimensional shading and soft highlights " +
+    "across the form (NOT flat, even, shadowless lighting), and add a soft, realistic contact shadow " +
+    "grounding the product on the surface. Set it against a seamless, gently graduated light-grey studio " +
+    "sweep backdrop (a subtle gradient, not a flat fill), clean and free of props. High resolution, " +
+    "tack-sharp focus across the whole product. IMPORTANT: this is a NEW studio photograph, not the " +
+    "reference snapshot — restage the lighting, shadow, presentation, and backdrop for a polished, " +
+    "dimensional commercial look while keeping the product itself (type, shape, color, material, details) " +
+    "exactly identical to the reference.",
   closeup:
     "Macro close-up product photography, tight crop centered on the decorated area only, " +
     "filling most of the frame, slightly angled raking light to reveal surface texture and " +
@@ -392,12 +400,16 @@ function buildPrompt(view, { method, placement, size, sceneOn, marker }) {
     `The product is the exact item shown in the product reference photo, with this ` +
     `${sizeAdj}logo ${decor} ${placementText}.`;
   const negatives = ` Strictly avoid: ${NEGATIVE_BASE}${NEGATIVE_METHOD[method] || ""}.`;
+  // The product shot now owns its own dimensional lighting + graduated backdrop
+  // (see SHOT_TYPES.product); LIGHTING_BG's "soft diffused lighting" would flatten
+  // that, so only the macro close-up (where the backdrop barely shows) keeps it.
+  const lighting = view === "closeup" ? " " + LIGHTING_BG : "";
   return (
     SHOT_TYPES[view] +
     " " + subject +
     sizing +
     " " + METHODS[method] +
-    " " + LIGHTING_BG +
+    lighting +
     " " + QUALITY_TAGS +
     negatives +
     markerClause
@@ -473,7 +485,12 @@ async function generateOne(view, prompt, references, seed, colorClause) {
 // closeup+model run anchors on the close-up; a model-only run has no "rest" to
 // chain. If the anchor shot fails, the remaining shots fall back to their base
 // references only. Never throws; every failure is reported as a per-view result.
-async function generateShotSet(views, opts) {
+//
+// `emit(result)` fires as soon as EACH shot finishes (anchor first, then every
+// other shot in whatever order it actually completes — not the canonical
+// order) so the caller can stream progress to the client instead of waiting
+// for the whole set.
+async function generateShotSet(views, opts, emit) {
   const seed = seedFor(opts.productImage.slice(-256)); // same seed for every shot
   // Reference order matters — the prompt clauses name them positionally:
   // 1: logo, 2: product photo, 3 (optional): marker-annotated photo,
@@ -492,18 +509,18 @@ async function generateShotSet(views, opts) {
 
   const [anchorView, ...restViews] = views;
   const anchor = await safe(anchorView, buildPrompt(anchorView, opts), baseRefs);
+  emit(anchor);
   const anchorUrl = anchor.ok && anchor.images?.[0] ? `data:image/png;base64,${anchor.images[0]}` : null;
 
-  const rest = await Promise.all(
+  await Promise.all(
     restViews.map((view) =>
       safe(
         view,
         buildPrompt(view, opts) + (anchorUrl ? DECORATED_MATCH : ""),
         anchorUrl ? [...baseRefs, anchorUrl] : baseRefs
-      )
+      ).then(emit)
     )
   );
-  return [anchor, ...rest];
 }
 
 export async function POST(req) {
@@ -555,8 +572,24 @@ export async function POST(req) {
       logoColors: cleanLogoColors.length ? cleanLogoColors : null,
       productColor: cleanProductColor,
     };
-    const results = await generateShotSet(shotViews, opts);
-    return Response.json({ results });
+
+    // Stream results as newline-delimited JSON, one line per shot, as soon as
+    // each finishes — lets the client show "N of M generated" and render
+    // finished shots immediately instead of waiting for the slowest one.
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (result) => controller.enqueue(encoder.encode(JSON.stringify(result) + "\n"));
+        try {
+          await generateShotSet(shotViews, opts, emit);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
+    });
   } catch (e) {
     const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
     return Response.json({ error: detail }, { status: 500 });

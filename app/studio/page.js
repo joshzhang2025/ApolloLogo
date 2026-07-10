@@ -156,6 +156,10 @@ const STRINGS = {
   },
 };
 
+// "1 of 3 generated" progress text shown on a batch while shots stream in.
+const progressLabel = (lang, done, total) =>
+  lang === "zh" ? `已生成 ${done}/${total} 张` : `${done} of ${total} generated`;
+
 // ---------- Small inline icons (stroke inherits currentColor) ----------
 function IconUpload(props) {
   return (
@@ -625,11 +629,31 @@ export default function Studio() {
             productColor,
           }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Request failed");
-        setBatches((bs) =>
-          bs.map((b) => (b.id === id ? { ...b, results: data.results || [], pending: false } : b))
-        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Request failed");
+        }
+        // The backend streams one JSON result per line as each shot finishes
+        // (not all at once), so results appear — and the "N of M" count ticks
+        // up — as soon as each shot is ready instead of only at the very end.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop(); // last (possibly incomplete) line stays buffered
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const result = JSON.parse(line);
+            setBatches((bs) =>
+              bs.map((b) => (b.id === id ? { ...b, results: [...b.results, result] } : b))
+            );
+          }
+        }
+        setBatches((bs) => bs.map((b) => (b.id === id ? { ...b, pending: false } : b)));
       } catch (e) {
         setBatches((bs) =>
           bs.map((b) => (b.id === id ? { ...b, error: e.message, pending: false } : b))
@@ -1068,10 +1092,18 @@ export default function Studio() {
                                   {t.generationLabel} #{batch.id}
                                 </span>
                                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                                  {batch.settings.views.length}{" "}
-                                  {batch.settings.views.length === 1 ? t.imageSingular : t.imagePlural}
+                                  {batch.pending
+                                    ? `${batch.results.length} / ${batch.settings.views.length}`
+                                    : `${batch.settings.views.length} ${
+                                        batch.settings.views.length === 1 ? t.imageSingular : t.imagePlural
+                                      }`}
                                 </span>
-                                {!batch.pending && (
+                                {batch.pending ? (
+                                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-indigo-500">
+                                    <IconSpinner className="h-3 w-3" />
+                                    {progressLabel(lang, batch.results.length, batch.settings.views.length)}
+                                  </span>
+                                ) : (
                                   <span className="text-[11px] text-zinc-400">{fmtTime(batch.createdAt)}</span>
                                 )}
                               </div>
@@ -1122,75 +1154,78 @@ export default function Studio() {
                           </p>
                         )}
 
-                        {/* shots in this run */}
+                        {/* shots in this run — results render as soon as each one
+                            streams in; any view not yet arrived stays a skeleton. */}
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                          {batch.pending
-                            ? batch.settings.views.map((v) => (
+                          {batch.results.map((r, idx) =>
+                            r.ok ? (
+                              r.images.map((b64, i) => {
+                                const src = `data:image/png;base64,${b64}`;
+                                const viewName = viewLabel(r.view);
+                                const filename = `Apollo Mockup - ${viewName}.png`;
+                                return (
+                                  <figure
+                                    key={`${batch.id}-${idx}-${i}`}
+                                    className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => openLightbox(src, viewName, filename)}
+                                      className="relative block aspect-square w-full cursor-zoom-in overflow-hidden"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={src}
+                                        alt={viewName}
+                                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                                      />
+                                      <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
+                                        {viewName}
+                                      </span>
+                                      <span className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                                      <span className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 opacity-0 shadow transition-opacity duration-200 group-hover:opacity-100">
+                                        <IconExpand />
+                                      </span>
+                                    </button>
+                                    <figcaption className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+                                      <span className="truncate text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                                        {viewName}
+                                      </span>
+                                      <a
+                                        href={src}
+                                        download={filename}
+                                        className="flex items-center gap-1 rounded-lg bg-zinc-100 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                      >
+                                        <IconDownload />
+                                        {t.download}
+                                      </a>
+                                    </figcaption>
+                                  </figure>
+                                );
+                              })
+                            ) : (
+                              <div
+                                key={`${batch.id}-${idx}-err`}
+                                className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 text-center dark:border-amber-900/60 dark:bg-amber-950/30"
+                              >
+                                <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                                  {viewLabel(r.view)} {t.shotFailed}
+                                </span>
+                                <span className="line-clamp-4 text-xs text-amber-600/90 dark:text-amber-500/90">
+                                  {typeof r.error === "string" ? r.error : JSON.stringify(r.error)}
+                                </span>
+                              </div>
+                            )
+                          )}
+                          {batch.pending &&
+                            batch.settings.views
+                              .filter((v) => !batch.results.some((r) => r.view === v))
+                              .map((v) => (
                                 <div
                                   key={`${batch.id}-skeleton-${v}`}
                                   className="skeleton-shimmer aspect-square rounded-2xl border border-zinc-200/60 dark:border-zinc-800/60"
                                 />
-                              ))
-                            : batch.results.map((r, idx) =>
-                                r.ok ? (
-                                  r.images.map((b64, i) => {
-                                    const src = `data:image/png;base64,${b64}`;
-                                    const viewName = viewLabel(r.view);
-                                    const filename = `Apollo Mockup - ${viewName}.png`;
-                                    return (
-                                      <figure
-                                        key={`${batch.id}-${idx}-${i}`}
-                                        className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
-                                      >
-                                        <button
-                                          type="button"
-                                          onClick={() => openLightbox(src, viewName, filename)}
-                                          className="relative block aspect-square w-full cursor-zoom-in overflow-hidden"
-                                        >
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={src}
-                                            alt={viewName}
-                                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-                                          />
-                                          <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur">
-                                            {viewName}
-                                          </span>
-                                          <span className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                                          <span className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 opacity-0 shadow transition-opacity duration-200 group-hover:opacity-100">
-                                            <IconExpand />
-                                          </span>
-                                        </button>
-                                        <figcaption className="flex items-center justify-between gap-2 px-3.5 py-2.5">
-                                          <span className="truncate text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                                            {viewName}
-                                          </span>
-                                          <a
-                                            href={src}
-                                            download={filename}
-                                            className="flex items-center gap-1 rounded-lg bg-zinc-100 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                                          >
-                                            <IconDownload />
-                                            {t.download}
-                                          </a>
-                                        </figcaption>
-                                      </figure>
-                                    );
-                                  })
-                                ) : (
-                                  <div
-                                    key={`${batch.id}-${idx}-err`}
-                                    className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 text-center dark:border-amber-900/60 dark:bg-amber-950/30"
-                                  >
-                                    <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                                      {viewLabel(r.view)} {t.shotFailed}
-                                    </span>
-                                    <span className="line-clamp-4 text-xs text-amber-600/90 dark:text-amber-500/90">
-                                      {typeof r.error === "string" ? r.error : JSON.stringify(r.error)}
-                                    </span>
-                                  </div>
-                                )
-                              )}
+                              ))}
                         </div>
                       </section>
                     ))}

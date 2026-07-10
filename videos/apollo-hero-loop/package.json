@@ -1,0 +1,11 @@
+{
+  "name": "apollo-hero-loop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.38 preview",
+    "check": "npx --yes hyperframes@0.7.38 lint && npx --yes hyperframes@0.7.38 validate && npx --yes hyperframes@0.7.38 inspect",
+    "render": "npx --yes hyperframes@0.7.38 render",
+    "publish": "npx --yes hyperframes@0.7.38 publish"
+  }
+}

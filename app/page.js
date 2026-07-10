@@ -174,9 +174,9 @@ export default function Home() {
                 muted
                 playsInline
                 preload="auto"
-                aria-label="Apollo turning a logo into apparel mockups"
+                aria-label="Apollo apparel mockups — caps, tees, beanies, bags and gloves"
               >
-                <source src="/hero-loop.mp4" type="video/mp4" />
+                <source src="/showcase-reel.mp4" type="video/mp4" />
               </video>
             </figure>
           </div>

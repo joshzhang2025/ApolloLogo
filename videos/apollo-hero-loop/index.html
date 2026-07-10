@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Apollo — Homepage Loop</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+
+      /* ---------- Ambient background layers (NOT clips — always visible) ---------- */
+      .full-bleed { position: absolute; inset: 0; overflow: hidden; }
+      #bg {
+        background:
+          radial-gradient(120% 90% at 50% -10%, #14122b 0%, #0a0a12 55%, #08080e 100%);
+      }
+      #glow-wrap { pointer-events: none; }
+      #glow {
+        position: absolute; left: 50%; top: 18%;
+        width: 1100px; height: 1100px; margin: -550px 0 0 -550px;
+        background: radial-gradient(circle, rgba(99,102,241,0.42) 0%, rgba(124,58,237,0.16) 42%, transparent 70%);
+        filter: blur(20px);
+      }
+      #glow2 {
+        position: absolute; right: 6%; bottom: -12%;
+        width: 780px; height: 780px;
+        background: radial-gradient(circle, rgba(217,70,239,0.20) 0%, transparent 68%);
+        filter: blur(28px);
+      }
+      #grid {
+        background-image: radial-gradient(circle, rgba(150,150,180,0.16) 1.4px, transparent 1.4px);
+        background-size: 30px 30px;
+        -webkit-mask-image: radial-gradient(120% 80% at 50% 42%, #000 30%, transparent 82%);
+        mask-image: radial-gradient(120% 80% at 50% 42%, #000 30%, transparent 82%);
+      }
+
+      /* ---------- Content stage ---------- */
+      #scene { position: absolute; inset: 0; display: grid; place-items: center; }
+      #content {
+        position: relative;
+        width: 1560px; height: 900px;
+        display: flex; flex-direction: column; align-items: center;
+      }
+
+      /* Kicker pill */
+      #kicker {
+        display: inline-flex; align-items: center; gap: 12px;
+        padding: 11px 22px; border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(20,20,30,0.55);
+        color: #c9c9d6; font-size: 21px; font-weight: 500; letter-spacing: 0.02em;
+        backdrop-filter: blur(6px);
+        margin-top: 4px;
+      }
+      #kicker .dot { position: relative; width: 11px; height: 11px; }
+      #kicker .dot .core { position: absolute; inset: 0; border-radius: 999px; background: #818cf8; }
+      #kicker .dot .ping { position: absolute; inset: 0; border-radius: 999px; background: #818cf8; }
+
+      /* Middle region — upload chip + cards share the center */
+      #middle { position: relative; width: 100%; flex: 1; margin-top: 26px; }
+
+      /* Upload chip */
+      #chip {
+        position: absolute; left: 50%; top: 50%;
+        width: 520px;
+        display: flex; align-items: center; gap: 20px;
+        padding: 22px 26px; border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: linear-gradient(180deg, rgba(28,28,40,0.92), rgba(18,18,28,0.92));
+        box-shadow: 0 30px 80px -30px rgba(79,70,229,0.55);
+      }
+      #chip .thumb {
+        flex: none; width: 74px; height: 74px; border-radius: 16px;
+        display: grid; place-items: center;
+        background: radial-gradient(circle at 50% 35%, #2a2550, #141225);
+        border: 1px solid rgba(129,140,248,0.35);
+      }
+      #chip .thumb svg { width: 40px; height: 40px; }
+      #chip .meta { flex: 1; min-width: 0; }
+      #chip .fname { color: #ececf5; font-size: 24px; font-weight: 600; }
+      #chip .track { margin-top: 14px; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.10); overflow: hidden; }
+      #chip .fill { height: 100%; width: 100%; border-radius: 999px;
+        background: linear-gradient(90deg, #6366f1, #a855f7, #e879f9);
+        transform: scaleX(0); transform-origin: left center; }
+      #chip .arrow {
+        flex: none; width: 52px; height: 52px; border-radius: 14px;
+        display: grid; place-items: center;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff;
+      }
+
+      /* Ripple that bridges chip -> cards */
+      #ripple {
+        position: absolute; left: 50%; top: 50%; margin: -90px 0 0 -90px;
+        width: 180px; height: 180px; border-radius: 999px;
+        border: 2px solid rgba(129,140,248,0.55);
+      }
+
+      /* Caption line */
+      #caption { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; height: 44px; }
+      #caption .cap { position: absolute; left: 0; right: 0; font-size: 26px; font-weight: 500; color: #a9a9bd; }
+      #caption .cap .accent { color: #c4b5fd; }
+
+      /* Product cards row */
+      #cards {
+        position: absolute; left: 50%; top: 50%;
+        display: flex; gap: 34px;
+      }
+      .card {
+        position: relative; width: 300px; height: 372px; border-radius: 26px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.09);
+        background: linear-gradient(180deg, rgba(26,26,38,0.94), rgba(16,16,26,0.94));
+        box-shadow: 0 34px 70px -34px rgba(0,0,0,0.8);
+        display: flex; flex-direction: column;
+      }
+      .card .stagearea {
+        position: relative; flex: 1; display: grid; place-items: center;
+        background: radial-gradient(120% 90% at 50% 20%, hsl(var(--hue) 60% 22% / 0.55), transparent 70%);
+      }
+      .card .garment { width: 208px; height: 168px; }
+      .card .garment .g { fill: hsl(var(--hue) 62% 60%); }
+      .card .garment .g-soft { fill: hsl(var(--hue) 62% 60% / 0.85); }
+      .card .garment .accent { fill: hsl(var(--hue) 70% 78%); }
+      /* Logo badge placed on the garment */
+      .card .badge {
+        position: absolute; left: 50%; top: 52%;
+        width: 58px; height: 58px; border-radius: 999px; display: grid; place-items: center;
+        background: rgba(255,255,255,0.94);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      }
+      .card .badge svg { width: 34px; height: 34px; }
+      /* Generation shine sweep */
+      .card .shine {
+        position: absolute; top: -20%; left: 0; width: 60%; height: 140%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16) 45%, rgba(255,255,255,0.32) 50%, rgba(255,255,255,0.16) 55%, transparent);
+      }
+      .card .foot {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.07);
+      }
+      .card .foot .name { color: #e6e6f0; font-size: 20px; font-weight: 600; }
+      .card .ready {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 6px 12px; border-radius: 999px; font-size: 15px; font-weight: 600;
+        color: #6ee7b7; background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.3);
+      }
+      .card .ready svg { width: 13px; height: 13px; }
+
+      /* Brand payoff */
+      #brand { text-align: center; margin-bottom: 2px; }
+      #brand .word {
+        font-size: 68px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+        background: linear-gradient(90deg, #818cf8, #a855f7, #e879f9);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      #brand .tag { margin-top: 16px; font-size: 25px; font-weight: 400; color: #9a9ab0; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="16"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Ambient layers (not clips) -->
+      <div id="bg" class="full-bleed"></div>
+      <div id="grid" class="full-bleed"></div>
+      <div id="glow-wrap" class="full-bleed">
+        <div id="glow" data-layout-allow-overflow></div>
+        <div id="glow2" data-layout-allow-overflow></div>
+      </div>
+
+      <!-- Single always-present clip holds all timed content -->
+      <div id="scene" class="clip" data-start="0" data-duration="16" data-track-index="1">
+        <div id="content">
+          <!-- Kicker -->
+          <div id="kicker">
+            <span class="dot"><span class="ping"></span><span class="core"></span></span>
+            Apollo · AI merch mockups
+          </div>
+
+          <div id="middle">
+            <!-- Upload chip -->
+            <div id="chip">
+              <div class="thumb">
+                <svg viewBox="0 0 24 24" fill="none" stroke="url(#sg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <defs>
+                    <linearGradient id="sg" x1="0" y1="0" x2="24" y2="24">
+                      <stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#e879f9"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="url(#sg)" stroke="none"/>
+                  <path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" fill="url(#sg)" stroke="none"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="fname">apollo-logo.svg</div>
+                <div class="track"><div class="fill" id="prog"></div></div>
+              </div>
+              <div class="arrow" id="chip-arrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 19V5" /><polyline points="6 11 12 5 18 11" />
+                </svg>
+              </div>
+            </div>
+
+            <!-- Ripple bridge -->
+            <div id="ripple"></div>
+
+            <!-- Product cards (opacity 0 until the reveal beat; box remains for layout) -->
+            <div id="cards" data-layout-allow-overlap></div>
+
+            <!-- Caption -->
+            <div id="caption">
+              <div class="cap" id="cap-up">Upload your logo</div>
+              <div class="cap" id="cap-gen">Rendering <span class="accent">production-ready</span> mockups…</div>
+            </div>
+          </div>
+
+          <!-- Brand payoff -->
+          <div id="brand">
+            <div class="word">Apollo</div>
+            <div class="tag">Your logo on real merch — rendered in seconds.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ---- Garment SVGs (simple, recognizable silhouettes) ----
+      const TEE =
+        '<path class="g" d="M54 14 L32 22 L12 44 L28 64 L46 54 L46 150 C46 156 50 160 56 160 L144 160 C150 160 154 156 154 150 L154 54 L172 64 L188 44 L168 22 L146 14 C140 34 60 34 54 14 Z"/>';
+      const CAP =
+        '<path class="g" d="M28 96 C28 44 56 26 100 26 C150 26 168 58 168 92 L168 100 C168 106 164 110 158 110 L74 110 Z"/>' +
+        '<path class="g-soft" d="M70 100 C130 96 168 106 194 122 C194 132 176 134 150 130 L74 118 Z"/>';
+      const BEANIE =
+        '<path class="g" d="M34 92 C34 34 66 20 100 20 C134 20 166 34 166 92 Z"/>' +
+        '<rect class="g-soft" x="28" y="88" width="144" height="34" rx="16"/>' +
+        '<circle class="accent" cx="100" cy="14" r="9"/>';
+      const BLANKET =
+        '<rect class="g" x="34" y="34" width="132" height="104" rx="16"/>' +
+        '<rect class="accent" x="34" y="74" width="132" height="9"/>' +
+        '<rect class="g-soft" x="52" y="138" width="6" height="20" rx="3"/>' +
+        '<rect class="g-soft" x="72" y="138" width="6" height="20" rx="3"/>' +
+        '<rect class="g-soft" x="92" y="138" width="6" height="20" rx="3"/>' +
+        '<rect class="g-soft" x="112" y="138" width="6" height="20" rx="3"/>' +
+        '<rect class="g-soft" x="132" y="138" width="6" height="20" rx="3"/>' +
+        '<rect class="g-soft" x="152" y="138" width="6" height="20" rx="3"/>';
+
+      const SPARK =
+        '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="#6d28d9"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" fill="#a855f7"/></svg>';
+      const CHECK =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      const CARDS = [
+        { name: "Shirt", hue: 245, svg: TEE },
+        { name: "Cap", hue: 268, svg: CAP },
+        { name: "Beanie", hue: 292, svg: BEANIE },
+        { name: "Blanket", hue: 222, svg: BLANKET },
+      ];
+
+      // Build the cards synchronously at load (deterministic, no randomness).
+      const cardsRoot = document.getElementById("cards");
+      cardsRoot.innerHTML = CARDS.map((c, i) => `
+        <div class="card" id="card-${i}" style="--hue:${c.hue}">
+          <div class="stagearea">
+            <svg class="garment" viewBox="0 0 200 176">${c.svg}</svg>
+            <div class="badge" id="badge-${i}">${SPARK}</div>
+            <div class="shine" id="shine-${i}"></div>
+          </div>
+          <div class="foot">
+            <span class="name">${c.name}</span>
+            <span class="ready" id="ready-${i}">${CHECK} ready</span>
+          </div>
+        </div>`).join("");
+
+      // ---------------- Timeline ----------------
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Initial hidden states, all set at t=0 (every element is in the DOM inside one clip).
+      tl.set("#kicker", { opacity: 0, y: -12 }, 0);
+      tl.set("#chip", { xPercent: -50, yPercent: -50, opacity: 0, y: 34, scale: 0.94 }, 0);
+      tl.set("#cards", { xPercent: -50, yPercent: -50 }, 0);
+      tl.set("#prog", { scaleX: 0 }, 0);
+      tl.set("#ripple", { opacity: 0, scale: 0.35 }, 0);
+      tl.set("#cap-up", { opacity: 0, y: 10 }, 0);
+      tl.set("#cap-gen", { opacity: 0, y: 10 }, 0);
+      tl.set("#kicker .ping", { opacity: 0.55, scale: 1 }, 0);
+      tl.set("#brand .word", { opacity: 0, y: 28 }, 0);
+      tl.set("#brand .tag", { opacity: 0, y: 18 }, 0);
+      CARDS.forEach((c, i) => {
+        tl.set(`#card-${i}`, { opacity: 0, y: 74, scale: 0.9 }, 0);
+        tl.set(`#shine-${i}`, { xPercent: -180, skewX: -14 }, 0);
+        tl.set(`#badge-${i}`, { xPercent: -50, yPercent: -50, opacity: 0, scale: 0 }, 0);
+        tl.set(`#ready-${i}`, { opacity: 0, scale: 0.6 }, 0);
+      });
+
+      // Ambient glow drifts on a closed loop (returns to origin at t=16 → seamless).
+      tl.to("#glow", { x: 130, y: -70, duration: 8, ease: "sine.inOut" }, 0)
+        .to("#glow", { x: 0, y: 0, duration: 8, ease: "sine.inOut" }, 8);
+      tl.to("#glow2", { x: -90, y: 40, duration: 8, ease: "sine.inOut" }, 0)
+        .to("#glow2", { x: 0, y: 0, duration: 8, ease: "sine.inOut" }, 8);
+
+      // Kicker + its pulsing dot (finite yoyo, decorative).
+      tl.to("#kicker", { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.4);
+      tl.to("#kicker .ping", { scale: 2.4, opacity: 0, duration: 1.1, ease: "power1.out", repeat: 6, yoyo: false }, 0.6);
+
+      // Beat 1 — upload the logo.
+      tl.to("#chip", { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: "power3.out" }, 0.9);
+      tl.to("#prog", { scaleX: 1, duration: 1.5, ease: "power1.inOut" }, 1.2);
+      tl.to("#chip-arrow", { y: -7, duration: 0.5, ease: "sine.inOut", repeat: 3, yoyo: true }, 1.1);
+      tl.to("#cap-up", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 1.5);
+
+      // Beat 2 — commit / ripple bridge.
+      tl.set("#ripple", { opacity: 0.55, scale: 0.4 }, 2.9);
+      tl.to("#ripple", { scale: 1.8, opacity: 0, duration: 0.9, ease: "power2.out" }, 2.9);
+      tl.to("#chip", { opacity: 0, y: -26, duration: 0.6, ease: "power2.in" }, 3.0);
+      tl.to("#cap-up", { opacity: 0, y: -8, duration: 0.4, ease: "power2.in" }, 3.05);
+      tl.to("#cap-gen", { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 3.3);
+
+      // Beat 3 — mockups render in, staggered.
+      const BASE = 3.5, STEP = 0.55;
+      CARDS.forEach((c, i) => {
+        const t = BASE + i * STEP;
+        tl.to(`#card-${i}`, { opacity: 1, y: 0, scale: 1, duration: 0.85, ease: "power3.out" }, t);
+        tl.to(`#shine-${i}`, { xPercent: 260, duration: 1.05, ease: "power1.inOut" }, t + 0.05);
+        tl.to(`#badge-${i}`, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" }, t + 0.3);
+        tl.to(`#ready-${i}`, { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(2.2)" }, t + 0.72);
+      });
+
+      // Gentle breathe on the finished grid, returns to rest.
+      tl.to("#cards", { scale: 1.018, duration: 2.0, ease: "sine.inOut" }, 6.6)
+        .to("#cards", { scale: 1.0, duration: 2.2, ease: "sine.inOut" }, 8.6);
+
+      // Beat 4 — brand payoff.
+      tl.to("#cap-gen", { opacity: 0, y: -8, duration: 0.5, ease: "power2.in" }, 8.4);
+      tl.to("#brand .word", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 8.6);
+      tl.to("#brand .tag", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 9.1);
+
+      // Loop-out — fade all content back to ambient so the last frame matches the first.
+      tl.to("#content", { opacity: 0, duration: 1.7, ease: "power2.inOut" }, 13.7);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

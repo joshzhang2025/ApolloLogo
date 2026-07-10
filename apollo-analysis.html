@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apollo — Project Rationale & Analysis</title>
+<style>
+  :root {
+    --indigo: #4f46e5;
+    --indigo-light: #eef2ff;
+    --ink: #18181b;
+    --muted: #52525b;
+    --line: #e4e4e7;
+    --bg: #fafafa;
+    --card: #ffffff;
+    --green: #059669;
+    --amber: #d97706;
+    --red: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(to bottom, #fafafa, #f1f1f4);
+    color: var(--ink);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  /* Language toggle */
+  .langbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  #langBtn {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 18px;
+    transition: all 0.15s ease;
+  }
+  #langBtn:hover { border-color: var(--indigo); color: var(--indigo); }
+
+  /* Header */
+  header.hero { text-align: center; margin-bottom: 56px; }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--indigo);
+    background: var(--indigo-light);
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    padding: 6px 14px;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 40px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .hero p { font-size: 18px; color: var(--muted); max-width: 560px; margin: 0 auto; }
+
+  /* Section cards */
+  section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 32px 34px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .qnum {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: var(--indigo);
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    margin-right: 14px;
+    flex: 0 0 auto;
+  }
+  .qhead { display: flex; align-items: center; margin-bottom: 8px; }
+  .qhead h2 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .qsub { color: var(--muted); font-size: 14px; margin: 0 0 20px 48px; }
+  p { margin: 0 0 16px; }
+  strong { color: var(--ink); }
+
+  /* Pain point list */
+  ul.clean { list-style: none; padding: 0; margin: 0; }
+  ul.clean li {
+    position: relative;
+    padding: 10px 0 10px 30px;
+    border-bottom: 1px solid #f4f4f5;
+  }
+  ul.clean li:last-child { border-bottom: none; }
+  ul.clean li::before {
+    content: "";
+    position: absolute;
+    left: 4px; top: 18px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--indigo);
+  }
+
+  /* Competitor table */
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 12px 14px; vertical-align: top; }
+  thead th {
+    background: #f4f4f5;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+  }
+  tbody tr { border-bottom: 1px solid #f4f4f5; }
+  tbody tr:last-child { border-bottom: none; }
+  td .name { font-weight: 600; }
+  td .gap { color: var(--red); }
+
+  /* Feature grid */
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 6px; }
+  .feat {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 18px;
+    background: #fcfcfd;
+  }
+  .feat h3 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .feat p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .feat .ico { font-size: 18px; }
+
+  /* Conclusion */
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 22px;
+  }
+  .verdict .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); flex: 0 0 auto; }
+  .verdict strong { color: #065f46; font-size: 16px; }
+
+  .scorecard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0 22px; }
+  .score {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .score .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .score .val { font-size: 15px; font-weight: 600; margin-top: 4px; }
+  .pro { color: var(--green); }
+  .con { color: var(--amber); }
+
+  footer { text-align: center; color: #a1a1aa; font-size: 13px; margin-top: 40px; }
+
+  /* Chinese typographic tweak */
+  html[lang="zh"] body { line-height: 1.8; }
+  html[lang="zh"] thead th { text-transform: none; letter-spacing: 0; }
+  html[lang="zh"] .score .label,
+  html[lang="zh"] .badge { text-transform: none; letter-spacing: 0; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 30px; }
+    .features, .scorecard { grid-template-columns: 1fr; }
+    section { padding: 24px 20px; }
+    .qsub { margin-left: 0; }
+    td, th { padding: 10px 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="langbar">
+    <button id="langBtn" type="button" onclick="toggleLang()">中文</button>
+  </div>
+
+  <header class="hero">
+    <span class="badge" data-en="Apollo · AI Merch Mockups" data-zh="Apollo · AI 服装样机">Apollo · AI Merch Mockups</span>
+    <h1 data-en="Why Build This Tool?" data-zh="为什么要做这个工具？">Why Build This Tool?</h1>
+    <p data-en="A short rationale for an AI-powered logo-to-mockup generator built for an embroidery &amp; custom-apparel company."
+       data-zh="为刺绣与定制服装公司打造的「Logo 转样机」AI 工具的简要立项说明。">A short rationale for an AI-powered logo-to-mockup generator built for an embroidery &amp; custom-apparel company.</p>
+  </header>
+
+  <!-- Q1 -->
+  <section>
+    <div class="qhead"><span class="qnum">1</span><h2 data-en="What is the original problem?" data-zh="最初要解决的问题是什么？">What is the original problem?</h2></div>
+    <p class="qsub" data-en="What problem is this project trying to solve?" data-zh="这个项目要解决什么问题？">What problem is this project trying to solve?</p>
+    <p data-en="An embroidery company's biggest friction point in the sales process is &lt;strong&gt;showing the customer what their logo will actually look like&lt;/strong&gt; on a shirt, hat, or beanie &lt;em&gt;before&lt;/em&gt; any thread is sewn. Today that means one of two slow, expensive options:"
+       data-zh="刺绣公司在销售环节最大的阻力，是在还没下针之前就要&lt;strong&gt;让客户看到自己的 Logo 绣在 T 恤、帽子或毛线帽上到底是什么样子&lt;/strong&gt;。目前只有几种又慢又贵的做法：">An embroidery company's biggest friction point in the sales process is <strong>showing the customer what their logo will actually look like</strong> on a shirt, hat, or beanie <em>before</em> any thread is sewn. Today that means one of two slow, expensive options:</p>
+    <ul class="clean">
+      <li data-en="&lt;strong&gt;Hand-made digital mockups&lt;/strong&gt; — a designer manually places the logo onto a product photo in Photoshop. Takes 20–60 minutes per concept, and a backlog of these quotes ties up design staff."
+          data-zh="&lt;strong&gt;手工数字样机&lt;/strong&gt;——设计师用 Photoshop 把 Logo 一张张贴到产品图上。每个方案要花 20–60 分钟，大量报价需求会把设计人手全占住。">"<strong>Hand-made digital mockups</strong> — a designer manually places the logo onto a product photo in Photoshop. Takes 20–60 minutes per concept, and a backlog of these quotes ties up design staff."</li>
+      <li data-en="&lt;strong&gt;Physical samples / sew-outs&lt;/strong&gt; — actually stitching a sample costs materials, machine time, and days of turnaround. If the customer doesn't like it, that's money and time gone."
+          data-zh="&lt;strong&gt;实物打样 / 试绣&lt;/strong&gt;——真正绣一件样品要耗材料、占机器、还要等好几天。客户一旦不满意，钱和时间就白费了。">"<strong>Physical samples / sew-outs</strong> — actually stitching a sample costs materials, machine time, and days of turnaround. If the customer doesn't like it, that's money and time gone."</li>
+      <li data-en="&lt;strong&gt;No realistic preview at all&lt;/strong&gt; — many shops just send a flat logo or a verbal description, so customers can't picture the finished product, hesitate, and orders stall or get cancelled."
+          data-zh="&lt;strong&gt;根本没有逼真预览&lt;/strong&gt;——很多店只发个平面 Logo 或口头描述，客户想象不出成品，于是犹豫，订单就卡住甚至取消。">"<strong>No realistic preview at all</strong> — many shops just send a flat logo or a verbal description, so customers can't picture the finished product, hesitate, and orders stall or get cancelled."</li>
+      <li data-en="&lt;strong&gt;Embroidery looks different from print&lt;/strong&gt; — a flat logo file doesn't show raised satin stitch, 3D puff on caps, or thread sheen, so customers are often surprised (sometimes unpleasantly) by the real result."
+          data-zh="&lt;strong&gt;刺绣和印刷效果差别很大&lt;/strong&gt;——平面 Logo 文件体现不出凸起的缎面绣、帽子上的 3D 立体绣或线材光泽，客户拿到成品常会感到意外（有时是失望）。">"<strong>Embroidery looks different from print</strong> — a flat logo file doesn't show raised satin stitch, 3D puff on caps, or thread sheen, so customers are often surprised (sometimes unpleasantly) by the real result."</li>
+    </ul>
+    <p style="margin-top:16px"
+       data-en="&lt;strong&gt;Apollo solves this:&lt;/strong&gt; a salesperson drops in the customer's logo, picks the product(s), and in under a minute gets photorealistic mockups — both a clean product shot and an on-model lifestyle shot — that faithfully render embroidery or screen-print texture while keeping the logo's exact colors and shapes."
+       data-zh="&lt;strong&gt;Apollo 正是解决这一点：&lt;/strong&gt;销售只需上传客户的 Logo、选择产品，不到一分钟就能得到照片级样机——既有干净的产品图，也有模特上身的生活场景图——既真实还原刺绣或丝网印刷的质感，又精确保留 Logo 原本的颜色和形状。">"<strong>Apollo solves this:</strong> a salesperson drops in the customer's logo, picks the product(s), and in under a minute gets photorealistic mockups — both a clean product shot and an on-model lifestyle shot — that faithfully render embroidery or screen-print texture while keeping the logo's exact colors and shapes."</p>
+  </section>
+
+  <!-- Q2 -->
+  <section>
+    <div class="qhead"><span class="qnum">2</span><h2 data-en="Who are the competitors?" data-zh="竞争对手有哪些？">Who are the competitors?</h2></div>
+    <p class="qsub" data-en="Existing tools that overlap with what Apollo does." data-zh="与 Apollo 功能重叠的现有工具。">Existing tools that overlap with what Apollo does.</p>
+    <table>
+      <thead>
+        <tr>
+          <th data-en="Tool" data-zh="工具">Tool</th>
+          <th data-en="What it does" data-zh="能做什么">What it does</th>
+          <th data-en="Where it falls short for embroidery" data-zh="在刺绣场景下的不足">Where it falls short for embroidery</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="name">Placeit / Smartmockups</span></td>
+          <td data-en="Huge library of template mockups; drop your logo onto a fixed photo." data-zh="海量模板样机库，把 Logo 贴到固定照片上。">Huge library of template mockups; drop your logo onto a fixed photo.</td>
+          <td data-en="&lt;span class='gap'&gt;Flat overlay only&lt;/span&gt; — logo is pasted on top; no real stitch/thread texture, fixed poses &amp; garments." data-zh="&lt;span class='gap'&gt;只是平面叠加&lt;/span&gt;——Logo 贴在表面，没有真实的针法/线材质感，姿势和服装也固定。"><span class="gap">Flat overlay only</span> — logo is pasted on top; no real stitch/thread texture, fixed poses &amp; garments.</td>
+        </tr>
+        <tr>
+          <td><span class="name">Printful / Printify</span></td>
+          <td data-en="Auto-mockups tied to print-on-demand fulfillment." data-zh="与按需印刷履约绑定的自动样机。">Auto-mockups tied to print-on-demand fulfillment.</td>
+          <td data-en="&lt;span class='gap'&gt;Locked to their catalog &amp; printing&lt;/span&gt;; embroidery options limited; built to sell &lt;em&gt;their&lt;/em&gt; production, not yours." data-zh="&lt;span class='gap'&gt;锁定在它们的产品目录和印刷上&lt;/span&gt;；刺绣选项有限；目的是卖&lt;em&gt;它们自己&lt;/em&gt;的产能，而不是你的。"><span class="gap">Locked to their catalog &amp; printing</span>; embroidery options limited; built to sell <em>their</em> production, not yours.</td>
+        </tr>
+        <tr>
+          <td><span class="name" data-en="Digitizing software (Wilcom, Hatch)" data-zh="数字化打版软件（Wilcom、Hatch）">Digitizing software (Wilcom, Hatch)</span></td>
+          <td data-en="Converts art to stitch files; can render a stitch simulation." data-zh="把图稿转成绣花文件，可生成针法模拟图。">Converts art to stitch files; can render a stitch simulation.</td>
+          <td data-en="&lt;span class='gap'&gt;Technical &amp; slow&lt;/span&gt; — built for digitizers, not sales; no lifestyle/on-model shots; steep learning curve." data-zh="&lt;span class='gap'&gt;专业且慢&lt;/span&gt;——为打版师设计，不是为销售；没有生活/上身场景图；上手门槛高。"><span class="gap">Technical &amp; slow</span> — built for digitizers, not sales; no lifestyle/on-model shots; steep learning curve.</td>
+        </tr>
+        <tr>
+          <td><span class="name" data-en="Photoshop / Canva (manual)" data-zh="Photoshop / Canva（手工）">Photoshop / Canva (manual)</span></td>
+          <td data-en="A designer composites the logo by hand." data-zh="设计师手工合成 Logo。">A designer composites the logo by hand.</td>
+          <td data-en="&lt;span class='gap'&gt;Labor-intensive&lt;/span&gt; — minutes to hours per concept, needs skilled staff, doesn't scale." data-zh="&lt;span class='gap'&gt;费人力&lt;/span&gt;——每个方案几分钟到几小时，需要熟练人员，难以规模化。"><span class="gap">Labor-intensive</span> — minutes to hours per concept, needs skilled staff, doesn't scale.</td>
+        </tr>
+        <tr>
+          <td><span class="name" data-en="Generic AI image tools (Midjourney, etc.)" data-zh="通用 AI 绘图工具（Midjourney 等）">Generic AI image tools (Midjourney, etc.)</span></td>
+          <td data-en="Generate apparel imagery from prompts." data-zh="根据提示词生成服装图像。">Generate apparel imagery from prompts.</td>
+          <td data-en="&lt;span class='gap'&gt;Won't keep the logo exact&lt;/span&gt; — they redraw/recolor the artwork, which is unacceptable for brand work." data-zh="&lt;span class='gap'&gt;无法精确保留 Logo&lt;/span&gt;——它们会重画/改色，这对品牌作品是不可接受的。"><span class="gap">Won't keep the logo exact</span> — they redraw/recolor the artwork, which is unacceptable for brand work.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Q3 -->
+  <section>
+    <div class="qhead"><span class="qnum">3</span><h2 data-en="What are the main features?" data-zh="主要功能有哪些？">What are the main features?</h2></div>
+    <p class="qsub" data-en="Core functions Apollo offers (and what competitors typically have)." data-zh="Apollo 的核心功能（以及竞品通常具备的功能）。">Core functions Apollo offers (and what competitors typically have).</p>
+    <div class="features">
+      <div class="feat">
+        <h3><span class="ico">🪡</span> <span data-en="True material realism" data-zh="真实材质质感">True material realism</span></h3>
+        <p data-en="Renders raised satin-stitch embroidery, 3D puff on caps, knit-cuff thread, and flat matte screen print — not a flat sticker overlay." data-zh="还原凸起的缎面绣、帽子上的 3D 立体绣、毛线帽边线材，以及哑光丝网印刷——而不是平面贴纸式叠加。">Renders raised satin-stitch embroidery, 3D puff on caps, knit-cuff thread, and flat matte screen print — not a flat sticker overlay.</p>
+      </div>
+      <div class="feat">
+        <h3><span class="ico">🎯</span> <span data-en="Logo fidelity lock" data-zh="Logo 高保真锁定">Logo fidelity lock</span></h3>
+        <p data-en="Reproduces the customer's exact colors, shapes, and text pixel-for-pixel across every shot — no AI recoloring or restyling." data-zh="在每一张图中都逐像素还原客户的精确颜色、形状和文字——不会被 AI 改色或改风格。">Reproduces the customer's exact colors, shapes, and text pixel-for-pixel across every shot — no AI recoloring or restyling.</p>
+      </div>
+      <div class="feat">
+        <h3><span class="ico">👕</span> <span data-en="Product + on-model shots" data-zh="产品图 + 模特上身图">Product + on-model shots</span></h3>
+        <p data-en="Each product yields a clean e-commerce product photo and a lifestyle photo of a real model wearing it." data-zh="每个产品都会生成一张干净的电商产品图，以及一张真人模特上身的生活场景图。">Each product yields a clean e-commerce product photo and a lifestyle photo of a real model wearing it.</p>
+      </div>
+      <div class="feat">
+        <h3><span class="ico">⚡</span> <span data-en="Under a minute, no designer" data-zh="一分钟内，无需设计师">Under a minute, no designer</span></h3>
+        <p data-en="Upload → select → confirm. A salesperson with zero design skills produces a full set of mockups instantly." data-zh="上传 → 选择 → 确认。零设计基础的销售也能即时产出整套样机。">Upload → select → confirm. A salesperson with zero design skills produces a full set of mockups instantly.</p>
+      </div>
+      <div class="feat">
+        <h3><span class="ico">🧢</span> <span data-en="Multiple product types" data-zh="多种产品类型">Multiple product types</span></h3>
+        <p data-en="Embroidered shirts, screen-print shirts, structured caps, and knit beanies — picked à la carte per quote." data-zh="刺绣 T 恤、丝网印刷 T 恤、有型棒球帽、针织毛线帽——可按每单报价自由选配。">Embroidered shirts, screen-print shirts, structured caps, and knit beanies — picked à la carte per quote.</p>
+      </div>
+      <div class="feat">
+        <h3><span class="ico">🌐</span> <span data-en="Bilingual &amp; download-ready" data-zh="双语 + 一键下载">Bilingual &amp; download-ready</span></h3>
+        <p data-en="English / 中文 interface, zoom-to-inspect stitch detail, and one-click download to drop straight into a quote." data-zh="中英文界面，可放大查看针法细节，一键下载即可直接放进报价单。">English / 中文 interface, zoom-to-inspect stitch detail, and one-click download to drop straight into a quote.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Q4 -->
+  <section>
+    <div class="qhead"><span class="qnum">4</span><h2 data-en="What is the conclusion?" data-zh="结论是什么？">What is the conclusion?</h2></div>
+    <p class="qsub" data-en="Is this project valuable, and is it suitable for us to do?" data-zh="这个项目有价值吗？适合我们来做吗？">Is this project valuable, and is it suitable for us to do?</p>
+
+    <div class="verdict">
+      <span class="dot"></span>
+      <strong data-en="Verdict: Yes — high value, strong fit, and squarely within our wheelhouse." data-zh="结论：值得做——价值高、契合度强，且正好在我们的能力范围内。">Verdict: Yes — high value, strong fit, and squarely within our wheelhouse.</strong>
+    </div>
+
+    <div class="scorecard">
+      <div class="score"><div class="label" data-en="Closes sales faster" data-zh="更快成单">Closes sales faster</div><div class="val pro" data-en="Customers buy what they can see" data-zh="客户看得到才买得下手">Customers buy what they can see</div></div>
+      <div class="score"><div class="label" data-en="Cuts cost" data-zh="降低成本">Cuts cost</div><div class="val pro" data-en="No designer hours, no wasted sample sew-outs" data-zh="省去设计工时，避免试绣浪费">No designer hours, no wasted sample sew-outs</div></div>
+      <div class="score"><div class="label" data-en="Differentiator" data-zh="差异化优势">Differentiator</div><div class="val pro" data-en="Embroidery realism rivals can't match" data-zh="竞品做不到的刺绣真实感">Embroidery realism rivals can't match</div></div>
+      <div class="score"><div class="label" data-en="Watch-outs" data-zh="需要注意">Watch-outs</div><div class="val con" data-en="AI cost per image &amp; occasional retries" data-zh="每张图的 AI 成本与偶尔的重试">AI cost per image &amp; occasional retries</div></div>
+    </div>
+
+    <p data-en="For an embroidery business this is a &lt;strong&gt;direct revenue lever, not a vanity project&lt;/strong&gt;. The single biggest reason custom-apparel quotes go cold is that the customer can't picture the result — Apollo removes that doubt instantly and lets the team turn around far more quotes per day without adding design staff or burning materials on samples."
+       data-zh="对刺绣企业来说，这是一个&lt;strong&gt;直接拉动营收的杠杆，而不是面子工程&lt;/strong&gt;。定制服装报价之所以最常「凉掉」，就是因为客户想象不出成品——Apollo 能立刻消除这种顾虑，让团队在不增加设计人手、不浪费打样材料的情况下，每天处理多得多的报价。">For an embroidery business this is a <strong>direct revenue lever, not a vanity project</strong>. The single biggest reason custom-apparel quotes go cold is that the customer can't picture the result — Apollo removes that doubt instantly and lets the team turn around far more quotes per day without adding design staff or burning materials on samples.</p>
+    <p data-en="Crucially, it fills the exact gap every competitor leaves open: the generic mockup tools can't show real stitch texture, and the generic AI tools can't keep the logo accurate. Apollo does &lt;strong&gt;both&lt;/strong&gt;, which is precisely the combination an embroidery shop needs."
+       data-zh="关键在于，它恰好填补了所有竞品都留下的空白：通用样机工具做不出真实的针法质感，通用 AI 工具又保不住 Logo 的准确度。Apollo &lt;strong&gt;两者兼顾&lt;/strong&gt;，而这正是刺绣店所需要的组合。">Crucially, it fills the exact gap every competitor leaves open: the generic mockup tools can't show real stitch texture, and the generic AI tools can't keep the logo accurate. Apollo does <strong>both</strong>, which is precisely the combination an embroidery shop needs.</p>
+    <p data-en="The honest caveats are operational, not strategic: image-generation API cost per mockup, occasional regenerations when a shot misses, and the usual need to confirm thread-color matching against real garments before production. None of these undercut the core value — they're just things to manage. &lt;strong&gt;Recommendation: worth building.&lt;/strong&gt;"
+       data-zh="需要诚实说明的几点都是运营层面、而非战略层面的：每张样机的图像生成 API 成本、偶尔出图不理想需要重生成，以及投产前照例要对照实物核对线色。这些都不会动摇核心价值，只是需要管理的事项。&lt;strong&gt;建议：值得做。&lt;/strong&gt;">The honest caveats are operational, not strategic: image-generation API cost per mockup, occasional regenerations when a shot misses, and the usual need to confirm thread-color matching against real garments before production. None of these undercut the core value — they're just things to manage. <strong>Recommendation: worth building.</strong></p>
+  </section>
+
+  <footer data-en="Apollo — internal project rationale · prepared for review" data-zh="Apollo — 内部立项说明 · 供评审使用">Apollo — internal project rationale · prepared for review</footer>
+
+</div>
+
+<script>
+  let lang = "en";
+  function toggleLang() {
+    lang = lang === "en" ? "zh" : "en";
+    document.documentElement.setAttribute("lang", lang);
+    document.title = lang === "zh" ? "Apollo — 项目立项说明与分析" : "Apollo — Project Rationale & Analysis";
+    document.getElementById("langBtn").textContent = lang === "zh" ? "English" : "中文";
+    document.querySelectorAll("[data-en]").forEach(function (el) {
+      el.innerHTML = el.getAttribute("data-" + lang);
+    });
+  }
+</script>
+</body>
+</html>

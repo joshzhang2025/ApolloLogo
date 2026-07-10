@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Apollo — Mockup Collection Slideshow</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08080e;
+        font-family: "Montserrat", sans-serif;
+      }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+
+      /* ---------- Persistent ambient layers (always visible, never clips) ---------- */
+      .full-bleed { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+      #bg {
+        background: radial-gradient(120% 90% at 50% -10%, #14122b 0%, #0a0a12 55%, #08080e 100%);
+      }
+      #glow {
+        position: absolute; left: 50%; top: 12%;
+        width: 1200px; height: 1200px; margin: -600px 0 0 -600px;
+        background: radial-gradient(circle, rgba(99,102,241,0.30) 0%, rgba(124,58,237,0.12) 42%, rgba(10,10,18,0) 70%);
+        filter: blur(24px);
+      }
+      #glow2 {
+        position: absolute; right: -6%; bottom: -18%;
+        width: 900px; height: 900px;
+        background: radial-gradient(circle, rgba(232,121,249,0.14) 0%, rgba(10,10,18,0) 66%);
+        filter: blur(30px);
+      }
+      #grid {
+        background-image: radial-gradient(circle, rgba(150,150,190,0.17) 1.4px, rgba(10,10,18,0) 1.4px);
+        background-size: 34px 34px;
+        -webkit-mask-image: radial-gradient(120% 85% at 50% 45%, #000 25%, transparent 80%);
+        mask-image: radial-gradient(120% 85% at 50% 45%, #000 25%, transparent 80%);
+      }
+      #vignette {
+        z-index: 40;
+        background: radial-gradient(120% 110% at 50% 50%, rgba(8,8,14,0) 62%, rgba(6,6,12,0.55) 100%);
+      }
+
+      /* ---------- Stage + scenes ---------- */
+      #stage { position: absolute; inset: 0; z-index: 10; }
+      .scene { position: absolute; inset: 0; overflow: hidden; }
+      .scene.hidden-start { opacity: 0; }
+
+      /* ---------- Persistent chrome (crisp, above scene transitions) ---------- */
+      #chrome { position: absolute; inset: 0; z-index: 60; pointer-events: none; opacity: 0; }
+      .chrome-word {
+        position: absolute; left: 64px; top: 48px;
+        display: flex; align-items: baseline; gap: 14px;
+      }
+      .chrome-word .mark { font-weight: 900; font-size: 30px; letter-spacing: 0.06em; color: #ececf5; }
+      .chrome-word .mark .star { color: #818cf8; }
+      .chrome-word .sub { font-family: "Space Mono", monospace; font-size: 17px; letter-spacing: 0.18em; color: #9d9db6; }
+      .chrome-right {
+        position: absolute; right: 64px; top: 52px; text-align: right;
+        font-family: "Space Mono", monospace; font-size: 17px; letter-spacing: 0.18em; color: #9d9db6;
+      }
+      .chrome-right b { color: #c7c9f2; font-weight: 700; }
+      #ticks {
+        position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%);
+        display: flex; gap: 12px;
+      }
+      #ticks .tick {
+        width: 34px; height: 4px; border-radius: 2px;
+        background: rgba(157,157,182,0.28); overflow: hidden;
+      }
+      #ticks .tick .fill {
+        width: 100%; height: 100%; border-radius: 2px;
+        background: #818cf8; transform: scaleX(0); transform-origin: left center;
+      }
+      .chrome-corner {
+        position: absolute; font-family: "Space Mono", monospace;
+        font-size: 16px; letter-spacing: 0.16em; color: #83839c;
+      }
+      #cc-left { left: 64px; bottom: 44px; }
+      #cc-right { right: 64px; bottom: 44px; }
+
+      /* ---------- Intro ---------- */
+      #s-intro .ghost {
+        position: absolute; right: -60px; top: 240px;
+        font-weight: 900; font-size: 380px; letter-spacing: -0.02em;
+        color: rgba(129,140,248,0.10); white-space: nowrap;
+      }
+      #s-intro .wrap {
+        position: absolute; left: 160px; top: 0; height: 100%; width: 1400px;
+        display: flex; flex-direction: column; justify-content: center; gap: 30px;
+      }
+      #s-intro .kicker {
+        display: inline-flex; align-items: center; gap: 16px; width: fit-content;
+        font-family: "Space Mono", monospace; font-size: 22px; letter-spacing: 0.22em; color: #b9baf0;
+        padding: 14px 26px; border: 2px solid rgba(129,140,248,0.35); border-radius: 999px;
+        background: rgba(20,20,34,0.6);
+      }
+      #s-intro .kicker .dot { width: 10px; height: 10px; border-radius: 999px; background: #818cf8; }
+      #s-intro h1 { font-size: 152px; font-weight: 900; line-height: 1.02; letter-spacing: -0.03em; color: #ececf5; }
+      #s-intro h1 .accent { color: #a5b4fc; }
+      #s-intro .rule { width: 220px; height: 4px; background: #6366f1; border-radius: 2px; }
+      #s-intro .sub {
+        font-family: "Space Mono", monospace; font-size: 27px; letter-spacing: 0.10em; color: #b9b9ce;
+      }
+      #s-intro .sub b { color: #e879f9; font-weight: 700; }
+      .rail {
+        position: absolute; right: 58px; top: 50%;
+        transform: translateY(-50%) rotate(90deg); transform-origin: center;
+        font-family: "Space Mono", monospace; font-size: 16px; letter-spacing: 0.42em;
+        color: rgba(157,157,182,0.55); white-space: nowrap;
+      }
+      .cornermark { position: absolute; width: 30px; height: 30px; border: 3px solid rgba(129,140,248,0.45); }
+      .cm-tl { left: 60px; top: 120px; border-right: none; border-bottom: none; }
+      .cm-br { right: 60px; bottom: 120px; border-left: none; border-top: none; }
+
+      /* ---------- Make scene (drag → generate → pop out) ---------- */
+      #s-make .make-eyebrow {
+        position: absolute; left: 50%; top: 118px; transform: translateX(-50%);
+        font-family: "Space Mono", monospace; font-size: 22px; letter-spacing: 0.24em; color: #b9baf0;
+        display: flex; align-items: center; gap: 16px;
+      }
+      #s-make .make-eyebrow .dot { width: 10px; height: 10px; border-radius: 999px; background: #818cf8; }
+
+      #s-make .panel {
+        position: absolute; left: 50%; top: 232px; margin-left: -520px;
+        width: 1040px; height: 616px; border-radius: 24px;
+        background: rgba(16,16,24,0.92);
+        border: 2px solid rgba(129,140,248,0.30);
+        box-shadow: 0 60px 130px -50px rgba(0,0,0,0.85), 0 0 100px -40px rgba(99,102,241,0.30);
+        overflow: hidden;
+      }
+      #s-make .panel-bar {
+        position: absolute; left: 0; top: 0; width: 100%; height: 74px;
+        display: flex; align-items: center; gap: 18px; padding: 0 34px;
+        border-bottom: 1px solid rgba(129,140,248,0.20);
+        background: rgba(20,20,34,0.6);
+      }
+      #s-make .panel-bar .mk { font-weight: 900; font-size: 26px; letter-spacing: 0.05em; color: #ececf5; }
+      #s-make .panel-bar .mk .star { color: #818cf8; }
+      #s-make .panel-bar .tag {
+        font-family: "Space Mono", monospace; font-size: 15px; letter-spacing: 0.18em; color: #f0abfc;
+        padding: 6px 14px; border: 2px solid rgba(232,121,249,0.45); border-radius: 6px; background: rgba(56,24,64,0.35);
+      }
+      #s-make .panel-bar .dots { margin-left: auto; display: flex; gap: 9px; }
+      #s-make .panel-bar .dots span { width: 11px; height: 11px; border-radius: 999px; background: rgba(157,157,182,0.4); }
+
+      #s-make .zones { position: absolute; left: 44px; top: 116px; display: flex; gap: 40px; }
+      #s-make .zone {
+        position: relative; width: 456px; height: 300px; border-radius: 16px;
+        border: 2.5px dashed rgba(129,140,248,0.42);
+        background: rgba(24,24,40,0.5);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      }
+      #s-make .zone .zlabel {
+        font-family: "Space Mono", monospace; font-size: 18px; letter-spacing: 0.20em; color: #9d9db6;
+      }
+      #s-make .zone .zhint {
+        font-family: "Space Mono", monospace; font-size: 14px; letter-spacing: 0.10em; color: #6b6b85;
+      }
+      #s-make .zone .zicon { width: 46px; height: 46px; color: rgba(129,140,248,0.55); }
+      /* filled state art, revealed on drop */
+      #s-make .zone .zfill {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        opacity: 0; pointer-events: none;
+      }
+      #s-make .zone .zempty { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+      #s-make .zone .zcheck {
+        position: absolute; top: 16px; right: 16px; width: 30px; height: 30px; color: #34d399; opacity: 0;
+      }
+
+      #s-make .genbtn {
+        position: absolute; left: 50%; bottom: 40px; margin-left: -260px;
+        width: 520px; height: 84px; border-radius: 14px;
+        display: flex; align-items: center; justify-content: center; gap: 14px;
+        font-weight: 900; font-size: 26px; letter-spacing: 0.06em; color: #b9b9ce;
+        background: rgba(40,40,60,0.7); border: 2px solid rgba(129,140,248,0.28);
+        overflow: hidden;
+      }
+      #s-make .genbtn .glabel { position: relative; z-index: 2; }
+      #s-make .genbtn .gbusy { left: 0; width: 100%; text-align: center; z-index: 2; }
+      #s-make .genbtn .gspark { width: 22px; height: 22px; }
+      #s-make .genbtn .ripple {
+        position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px;
+        border-radius: 999px; border: 3px solid rgba(165,180,252,0.8); opacity: 0; transform: scale(0.3);
+      }
+      #s-make .genbtn .gbar {
+        position: absolute; left: 0; bottom: 0; width: 100%; height: 5px;
+        background: linear-gradient(90deg,#6366f1,#e879f9); transform: scaleX(0); transform-origin: left center;
+      }
+
+      /* SVG line-art shared look */
+      #s-make .line { fill: none; stroke: #a5b4fc; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      #s-make .line-soft { fill: none; stroke: rgba(165,180,252,0.6); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      /* drawable strokes start hidden (dashoffset animated 1 → 0) */
+      #s-make .draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
+
+      /* drag sources (start off the panel) */
+      #s-make .src { position: absolute; }
+      #s-make .src-logo { left: 150px; top: 250px; width: 150px; height: 150px; }
+      #s-make .src-cap  { left: 150px; top: 620px; width: 190px; height: 150px; }
+      #s-make .src .srccard {
+        width: 100%; height: 100%; border-radius: 14px;
+        background: rgba(20,20,34,0.9); border: 2px solid rgba(129,140,248,0.4);
+        box-shadow: 0 30px 70px -30px rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
+      }
+
+      /* result pop-out card */
+      #s-make .result {
+        position: absolute; left: 50%; top: 388px; margin-left: -230px;
+        width: 460px; height: 340px; border-radius: 20px;
+        background: rgba(18,18,30,0.96); border: 2px solid rgba(129,140,248,0.5);
+        box-shadow: 0 50px 120px -40px rgba(0,0,0,0.9), 0 0 90px -20px rgba(99,102,241,0.5);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        opacity: 0;
+      }
+      #s-make .result .rlabel {
+        display: flex; align-items: center; gap: 12px;
+        font-family: "Space Mono", monospace; font-size: 20px; letter-spacing: 0.16em; color: #34d399;
+      }
+      #s-make .result .rlabel svg { width: 26px; height: 26px; }
+      #s-make .glowburst {
+        position: absolute; left: 50%; top: 558px; width: 560px; height: 560px; margin: -280px 0 0 -280px;
+        border-radius: 999px; pointer-events: none;
+        background: radial-gradient(circle, rgba(129,140,248,0.4) 0%, rgba(10,10,18,0) 62%);
+        opacity: 0; transform: scale(0.4);
+      }
+      /* embroidered logo on the result cap front */
+      #s-make .result .emblem { opacity: 0; }
+
+      /* cursor pointer */
+      #s-make .cursor { position: absolute; left: 0; top: 0; width: 42px; height: 42px; z-index: 20; }
+
+      /* ---------- Plates ---------- */
+      .plate-img {
+        position: absolute; top: 110px; width: 645px; height: 860px;
+        border-radius: 18px; overflow: hidden;
+        border: 2px solid rgba(129,140,248,0.28);
+        box-shadow: 0 50px 110px -40px rgba(0,0,0,0.85), 0 0 90px -30px rgba(99,102,241,0.35);
+        background: #101018;
+      }
+      .plate-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .plate.img-left  .plate-img { left: 150px; }
+      .plate.img-right .plate-img { left: 1125px; }
+      .plate-tick { position: absolute; width: 26px; height: 26px; border: 3px solid #818cf8; }
+      .pt-tl { border-right: none; border-bottom: none; }
+      .pt-tr { border-left: none; border-bottom: none; }
+      .pt-bl { border-right: none; border-top: none; }
+      .pt-br { border-left: none; border-top: none; }
+      .plate-caption {
+        position: absolute; top: 992px; width: 645px;
+        font-family: "Space Mono", monospace; font-size: 18px; letter-spacing: 0.12em; color: #9d9db6;
+      }
+      .plate.img-left  .plate-caption { left: 150px; }
+      .plate.img-right .plate-caption { left: 1125px; text-align: right; }
+
+      .plate .ghost-num {
+        position: absolute; top: 120px;
+        font-weight: 900; font-size: 470px; line-height: 1;
+        color: rgba(129,140,248,0.10);
+      }
+      .plate.img-left  .ghost-num { right: 40px; }
+      .plate.img-right .ghost-num { left: 40px; }
+
+      .plate .col {
+        position: absolute; top: 0; height: 100%; width: 800px;
+        display: flex; flex-direction: column; justify-content: center; gap: 26px;
+      }
+      .plate.img-left  .col { left: 950px; }
+      .plate.img-right .col { left: 160px; }
+
+      .plate .kicker-row { display: flex; align-items: center; gap: 20px; }
+      .plate .plate-no {
+        font-family: "Space Mono", monospace; font-size: 22px; font-weight: 700;
+        letter-spacing: 0.22em; color: #a5b4fc;
+      }
+      .plate .plate-no .of { color: #6b6b85; }
+      .plate .chip {
+        font-family: "Space Mono", monospace; font-size: 17px; letter-spacing: 0.18em;
+        color: #f0abfc; padding: 8px 16px; border: 2px solid rgba(232,121,249,0.45);
+        border-radius: 6px; background: rgba(56,24,64,0.35);
+      }
+      .plate h2 { font-size: 90px; font-weight: 900; line-height: 1.04; letter-spacing: -0.03em; color: #ececf5; text-transform: uppercase; }
+      .plate h2 .line { display: block; }
+      .plate .rule { width: 130px; height: 4px; background: #6366f1; border-radius: 2px; }
+      .plate .brand {
+        font-family: "Space Mono", monospace; font-size: 26px; font-weight: 700;
+        letter-spacing: 0.10em; color: #c7c9f2;
+      }
+      .plate .specs { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+      .plate .spec {
+        display: flex; align-items: center; gap: 14px;
+        font-family: "Space Mono", monospace; font-size: 19px; letter-spacing: 0.10em; color: #9d9db6;
+      }
+      .plate .spec .sq { width: 9px; height: 9px; background: rgba(129,140,248,0.65); }
+
+      /* ---------- Outro ---------- */
+      #s-outro .wrap {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+      }
+      #s-outro .kicker {
+        font-family: "Space Mono", monospace; font-size: 22px; letter-spacing: 0.26em; color: #b9baf0;
+      }
+      #s-outro h1 { font-size: 180px; font-weight: 900; letter-spacing: 0.02em; color: #ececf5; line-height: 1; }
+      #s-outro h1 .star { color: #818cf8; }
+      #s-outro .rule { width: 240px; height: 4px; background: #6366f1; border-radius: 2px; }
+      #s-outro .sub {
+        font-family: "Space Mono", monospace; font-size: 25px; letter-spacing: 0.14em; color: #b9b9ce;
+      }
+      #s-outro .sub b { color: #e879f9; font-weight: 700; }
+      #s-outro .thumbs { display: flex; gap: 18px; margin-top: 14px; }
+      #s-outro .thumbs .th {
+        width: 84px; height: 112px; border-radius: 10px; overflow: hidden;
+        border: 2px solid rgba(129,140,248,0.35);
+        box-shadow: 0 18px 40px -18px rgba(0,0,0,0.8);
+      }
+      #s-outro .thumbs .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+      #fade-black { position: absolute; inset: 0; z-index: 100; background: #050509; opacity: 0; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="34.5"
+    >
+      <div class="full-bleed" id="bg"></div>
+      <div class="full-bleed" id="glow-wrap"><div id="glow" data-layout-allow-overflow></div><div id="glow2" data-layout-allow-overflow></div></div>
+      <div class="full-bleed" id="grid"></div>
+
+      <div id="stage">
+        <!-- Scene: intro -->
+        <div id="s-intro" class="scene">
+          <div class="ghost" data-layout-allow-overflow>APOLLO</div>
+          <div class="cornermark cm-tl"></div>
+          <div class="cornermark cm-br"></div>
+          <div class="rail">APOLLO STUDIO — MOCKUP ENGINE — COLLECTION 07 — 2026</div>
+          <div class="wrap">
+            <div class="kicker"><span class="dot"></span>APOLLO STUDIO — PRODUCT MOCKUPS</div>
+            <h1>YOUR LOGO,<br /><span class="accent">MADE REAL.</span></h1>
+            <div class="rule"></div>
+            <div class="sub">07 STUDIO-GRADE MOCKUPS · <b>ZERO PHOTOSHOOTS</b></div>
+          </div>
+        </div>
+
+        <!-- Scene: make (drag → generate → pop out) -->
+        <div id="s-make" class="scene hidden-start">
+          <div class="make-eyebrow"><span class="dot"></span>APOLLO STUDIO — HOW IT WORKS</div>
+
+          <div class="panel">
+            <div class="panel-bar">
+              <div class="mk">AP<span class="star">O</span>LLO STUDIO</div>
+              <div class="tag">NEW MOCKUP</div>
+              <div class="dots"><span></span><span></span><span></span></div>
+            </div>
+
+            <div class="zones">
+              <!-- LOGO zone -->
+              <div class="zone" id="zone-logo">
+                <div class="zempty">
+                  <svg class="zicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+                  <div class="zlabel">LOGO</div>
+                  <div class="zhint">PNG · SVG · TRANSPARENT</div>
+                </div>
+                <div class="zfill" id="fill-logo">
+                  <svg viewBox="0 0 100 100" width="128" height="128"><path d="M50,8 L58,42 L92,50 L58,58 L50,92 L42,58 L8,50 L42,42 Z" fill="#a5b4fc"/><path d="M74,10 L78,24 L92,28 L78,32 L74,46 L70,32 L56,28 L70,24 Z" fill="#e879f9"/></svg>
+                </div>
+                <svg class="zcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+
+              <!-- PRODUCT zone -->
+              <div class="zone" id="zone-prod">
+                <div class="zempty">
+                  <svg class="zicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13c0-5 4-8 8-8s8 3 8 8M4 13h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+                  <div class="zlabel">PRODUCT</div>
+                  <div class="zhint">YOUR BLANK ITEM</div>
+                </div>
+                <div class="zfill" id="fill-prod">
+                  <svg viewBox="0 0 230 180" width="300" height="235">
+                    <path class="line draw" pathLength="1" d="M84,34 C78,36 70,40 62,46 L28,70 C25,72 25,76 28,79 L46,96 C49,98 53,97 55,93 L68,78 L64,154 C64,157 66,159 69,159 L161,159 C164,159 166,157 166,154 L162,78 L175,93 C177,97 181,98 184,96 L202,79 C205,76 205,72 202,70 L168,46 C160,40 152,36 146,34 C138,52 92,52 84,34 Z" />
+                    <path class="line-soft draw" pathLength="1" d="M92,39 C100,49 130,49 138,39" />
+                  </svg>
+                </div>
+                <svg class="zcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+            </div>
+
+            <div class="genbtn" id="genbtn">
+              <span class="ripple"></span>
+              <svg class="gspark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/></svg>
+              <span class="glabel">GENERATE</span>
+              <span class="gbusy" style="position:absolute;opacity:0;">GENERATING…</span>
+              <span class="gbar"></span>
+            </div>
+          </div>
+
+          <!-- drag sources -->
+          <div class="src src-logo" id="src-logo">
+            <div class="srccard">
+              <svg viewBox="0 0 100 100" width="96" height="96"><path d="M50,8 L58,42 L92,50 L58,58 L50,92 L42,58 L8,50 L42,42 Z" fill="#a5b4fc"/><path d="M74,10 L78,24 L92,28 L78,32 L74,46 L70,32 L56,28 L70,24 Z" fill="#e879f9"/></svg>
+            </div>
+          </div>
+          <div class="src src-cap" id="src-cap">
+            <div class="srccard">
+              <svg viewBox="0 0 230 180" width="150" height="117">
+                <path class="line" d="M84,34 C78,36 70,40 62,46 L28,70 C25,72 25,76 28,79 L46,96 C49,98 53,97 55,93 L68,78 L64,154 C64,157 66,159 69,159 L161,159 C164,159 166,157 166,154 L162,78 L175,93 C177,97 181,98 184,96 L202,79 C205,76 205,72 202,70 L168,46 C160,40 152,36 146,34 C138,52 92,52 84,34 Z" />
+                <path class="line-soft" d="M92,39 C100,49 130,49 138,39" />
+              </svg>
+            </div>
+          </div>
+
+          <!-- result pop-out -->
+          <div class="glowburst" id="glowburst" data-layout-allow-overflow></div>
+          <div class="result" id="result" data-layout-allow-overlap>
+            <svg viewBox="0 0 230 180" width="300" height="235">
+              <path class="line draw" pathLength="1" d="M84,34 C78,36 70,40 62,46 L28,70 C25,72 25,76 28,79 L46,96 C49,98 53,97 55,93 L68,78 L64,154 C64,157 66,159 69,159 L161,159 C164,159 166,157 166,154 L162,78 L175,93 C177,97 181,98 184,96 L202,79 C205,76 205,72 202,70 L168,46 C160,40 152,36 146,34 C138,52 92,52 84,34 Z" />
+              <path class="line-soft draw" pathLength="1" d="M92,39 C100,49 130,49 138,39" />
+            </svg>
+            <svg class="emblem" viewBox="0 0 100 100" width="62" height="62" style="position:absolute;left:50%;top:118px;margin-left:-31px;"><path d="M50,8 L58,42 L92,50 L58,58 L50,92 L42,58 L8,50 L42,42 Z" fill="#a5b4fc"/><path d="M74,10 L78,24 L92,28 L78,32 L74,46 L70,32 L56,28 L70,24 Z" fill="#e879f9"/></svg>
+            <div class="rlabel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>MOCKUP READY</div>
+          </div>
+
+          <!-- cursor -->
+          <svg class="cursor" id="cursor" viewBox="0 0 24 24"><path d="M4 2l6 16 2.5-6.5L19 9z" fill="#ffffff" stroke="#0a0a12" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- Plate scenes are generated synchronously by the script below -->
+
+        <!-- Scene: outro -->
+        <div id="s-outro" class="scene hidden-start">
+          <div class="wrap">
+            <div class="kicker">STUDIO-GRADE MOCKUPS · IN SECONDS</div>
+            <h1>AP<span class="star">O</span>LLO</h1>
+            <div class="rule"></div>
+            <div class="sub">UPLOAD. RENDER. <b>SHIP.</b></div>
+            <div class="thumbs">
+              <div class="th"><img src="assets/cap-product.png" alt="" /></div>
+              <div class="th"><img src="assets/cap-model.png" alt="" /></div>
+              <div class="th"><img src="assets/beanie-closeup.png" alt="" /></div>
+              <div class="th"><img src="assets/tee-product.png" alt="" /></div>
+              <div class="th"><img src="assets/glove-closeup.png" alt="" /></div>
+              <div class="th"><img src="assets/gloves-model.png" alt="" /></div>
+              <div class="th"><img src="assets/bag-model.png" alt="" /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Persistent chrome -->
+      <div id="chrome">
+        <div class="chrome-word">
+          <div class="mark">AP<span class="star">O</span>LLO</div>
+          <div class="sub">MOCKUP ENGINE</div>
+        </div>
+        <div class="chrome-right"><b>THE COLLECTION</b> — 07 PLATES</div>
+        <div id="ticks"></div>
+        <div class="chrome-corner" id="cc-left">APL—2026</div>
+        <div class="chrome-corner" id="cc-right">1920×1080 · STUDIO</div>
+      </div>
+
+      <div class="full-bleed" id="vignette"></div>
+      <div id="fade-black"></div>
+    </div>
+
+    <script>
+      // ---------- Plate data ----------
+      var PLATES = [
+        { id: "p1", img: "cap-product.png",    no: "01", shot: "PRODUCT SHOT", lines: ["STRUCTURED", "CAP"],      brand: "UBISOFT — 3D PUFF EMBROIDERY",    specs: ["SUBSTRATE — BRUSHED COTTON TWILL", "LIGHTING — STUDIO SOFTBOX"] },
+        { id: "p2", img: "cap-model.png",      no: "02", shot: "ON MODEL",     lines: ["WORN,", "NOT STAGED"],    brand: "UBISOFT — STRUCTURED CAP",        specs: ["TALENT — STUDIO MODEL", "ANGLE — THREE-QUARTER"] },
+        { id: "p3", img: "beanie-closeup.png", no: "03", shot: "CLOSE-UP",     lines: ["EVERY STITCH", "COUNTS"], brand: "GITHUB — RIBBED KNIT BEANIE",     specs: ["DETAIL — MACRO 2.4×", "THREAD — HIGH-DENSITY WHITE"] },
+        { id: "p4", img: "tee-product.png",    no: "04", shot: "PRODUCT SHOT", lines: ["THE CLASSIC", "TEE"],     brand: "SHELL — LEFT-CHEST EMBROIDERY",   specs: ["SUBSTRATE — HEAVYWEIGHT COTTON", "COLORWAY — SIGNAL RED"] },
+        { id: "p5", img: "glove-closeup.png",  no: "05", shot: "CLOSE-UP",     lines: ["TEXTURE,", "UP CLOSE"],   brand: "HONDA — KNIT GLOVE",              specs: ["DETAIL — MACRO 1.8×", "STITCH — RAISED SATIN"] },
+        { id: "p6", img: "gloves-model.png",   no: "06", shot: "ON MODEL",     lines: ["BUILT FOR", "THE COLD"],  brand: "HONDA — TOUCHSCREEN KNIT GLOVES", specs: ["TALENT — STUDIO MODEL", "GRADE — WINTER LOOKBOOK"] },
+        { id: "p7", img: "bag-model.png",      no: "07", shot: "ON MODEL",     lines: ["CARRY", "THE BRAND"],     brand: "NIKE — MESSENGER BAG",            specs: ["TALENT — STUDIO MODEL", "FRAME — WAIST-UP HOLD"] }
+      ];
+
+      // ---------- Build plate DOM (synchronous, deterministic) ----------
+      var stage = document.getElementById("stage");
+      var outroEl = document.getElementById("s-outro");
+      PLATES.forEach(function (p, i) {
+        var variant = i % 2 === 0 ? "img-left" : "img-right";
+        var el = document.createElement("div");
+        el.id = p.id;
+        el.className = "scene plate hidden-start " + variant;
+        el.innerHTML =
+          '<div class="ghost-num">' + p.no + "</div>" +
+          '<div class="plate-img"><img src="assets/' + p.img + '" alt="" data-layout-allow-overflow /></div>' +
+          '<div class="plate-caption">FILE — ' + p.img + " · 896×1200</div>" +
+          '<div class="col">' +
+            '<div class="kicker-row"><div class="plate-no">PLATE ' + p.no + ' <span class="of">/ 07</span></div><div class="chip">' + p.shot + "</div></div>" +
+            "<h2>" + p.lines.map(function (l) { return '<span class="line">' + l + "</span>"; }).join("") + "</h2>" +
+            '<div class="rule"></div>' +
+            '<div class="brand">' + p.brand + "</div>" +
+            '<div class="specs">' + p.specs.map(function (s) { return '<div class="spec"><span class="sq"></span>' + s + "</div>"; }).join("") + "</div>" +
+          "</div>";
+        stage.insertBefore(el, outroEl);
+
+        // corner registration ticks around the image plate
+        var left = variant === "img-left" ? 150 : 1125;
+        [["pt-tl", left - 12, 98], ["pt-tr", left + 645 - 14, 98], ["pt-bl", left - 12, 110 + 860 - 14], ["pt-br", left + 645 - 14, 110 + 860 - 14]].forEach(function (t) {
+          var tick = document.createElement("div");
+          tick.className = "plate-tick " + t[0];
+          tick.style.left = t[1] + "px";
+          tick.style.top = t[2] + "px";
+          el.appendChild(tick);
+        });
+      });
+
+      // progress ticks in chrome
+      var ticksWrap = document.getElementById("ticks");
+      for (var i = 0; i < 7; i++) {
+        var tk = document.createElement("div");
+        tk.className = "tick";
+        tk.innerHTML = '<div class="fill"></div>';
+        ticksWrap.appendChild(tk);
+      }
+
+      // ---------- Timeline ----------
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // --- Ambient (finite repeats covering the full ~34.5s) ---
+      tl.to("#glow", { scale: 1.09, x: 30, duration: 2, ease: "sine.inOut", repeat: 16, yoyo: true }, 0);
+      tl.to("#glow2", { scale: 1.12, y: -24, duration: 2.4, ease: "sine.inOut", repeat: 13, yoyo: true }, 0);
+      tl.to("#grid", { x: 22, duration: 3.5, ease: "sine.inOut", repeat: 9, yoyo: true }, 0);
+
+      // --- Intro entrances ---
+      tl.fromTo("#s-intro .ghost", { opacity: 0, x: 80 }, { opacity: 1, x: 0, duration: 1.1, ease: "power2.out" }, 0.05);
+      tl.to("#s-intro .ghost", { x: -40, duration: 2.35, ease: "none" }, 1.2);
+      tl.fromTo("#s-intro .kicker", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.55, ease: "power2.out" }, 0.15);
+      tl.fromTo("#s-intro h1", { opacity: 0, y: 80 }, { opacity: 1, y: 0, duration: 0.75, ease: "power4.out" }, 0.35);
+      tl.fromTo("#s-intro .rule", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.inOut", transformOrigin: "left center" }, 0.7);
+      tl.fromTo("#s-intro .sub", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5, ease: "sine.out" }, 0.85);
+      tl.fromTo("#s-intro .rail", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.out" }, 1.0);
+      tl.fromTo("#s-intro .cm-tl", { opacity: 0, x: -14, y: -14 }, { opacity: 1, x: 0, y: 0, duration: 0.45, ease: "power2.out" }, 0.95);
+      tl.fromTo("#s-intro .cm-br", { opacity: 0, x: 14, y: 14 }, { opacity: 1, x: 0, y: 0, duration: 0.45, ease: "power2.out" }, 1.05);
+      tl.fromTo("#s-intro .kicker .dot", { scale: 0.6 }, { scale: 1.25, duration: 0.5, ease: "sine.inOut", repeat: 5, yoyo: true }, 0.4);
+
+      // --- Scene schedule ---
+      var MAKE_T = 3.6;          // make scene starts right after the intro
+      var INTERACT_DUR = 6.3;    // length of the drag → generate → pop beat
+      var PLATE_DUR = 2.9;
+      var starts = {};
+      PLATES.forEach(function (p, i) { starts[p.id] = MAKE_T + INTERACT_DUR + i * PLATE_DUR; }); // p1 = 9.9
+      var OUTRO_T = MAKE_T + INTERACT_DUR + 7 * PLATE_DUR; // 30.2
+
+      // --- Chrome in as the plates begin (not during intro / make) ---
+      tl.fromTo("#chrome", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.out" }, starts.p1 - 0.1);
+
+      // --- Transition: intro -> make (vertical push, distinctive opener) ---
+      tl.to("#s-intro", { y: -1080, duration: 0.6, ease: "power3.inOut" }, MAKE_T);
+      tl.fromTo("#s-make", { y: 1080, opacity: 1 }, { y: 0, duration: 0.6, ease: "power3.inOut" }, MAKE_T);
+      tl.set("#s-intro", { opacity: 0 }, MAKE_T + 0.7);
+
+      // --- Make scene: cursor drags logo + cap in, clicks generate, mockup pops out ---
+      (function () {
+        var mt = MAKE_T;
+        // panel + eyebrow settle in (scene already slid up via the transition)
+        tl.fromTo("#s-make .panel", { opacity: 0, scale: 0.97 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, mt + 0.15);
+        tl.fromTo("#s-make .make-eyebrow", { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, mt + 0.25);
+        // cursor appears
+        tl.set("#cursor", { x: 560, y: 320, opacity: 0 }, mt);
+        tl.to("#cursor", { opacity: 1, duration: 0.3, ease: "sine.out" }, mt + 0.4);
+
+        // 1) grab logo, drag into LOGO zone
+        tl.to("#cursor", { x: 232, y: 322, duration: 0.4, ease: "power2.inOut" }, mt + 0.55);
+        tl.to("#src-logo", { scale: 0.92, duration: 0.15, ease: "power2.out" }, mt + 0.95);
+        tl.to("#src-logo", { x: 487, y: 173, duration: 0.7, ease: "power1.inOut" }, mt + 1.05);
+        tl.to("#cursor", { x: 706, y: 494, duration: 0.7, ease: "power1.inOut" }, mt + 1.05);
+        // drop LOGO
+        tl.to("#src-logo", { opacity: 0, duration: 0.2, ease: "sine.in" }, mt + 1.78);
+        tl.to("#zone-logo .zempty", { opacity: 0, duration: 0.2, ease: "sine.in" }, mt + 1.75);
+        tl.fromTo("#fill-logo", { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.7)" }, mt + 1.8);
+        tl.to("#zone-logo", { borderColor: "rgba(129,140,248,0.9)", backgroundColor: "rgba(40,40,70,0.6)", duration: 0.3, ease: "sine.out" }, mt + 1.8);
+        tl.fromTo("#zone-logo .zcheck", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, mt + 1.95);
+
+        // 2) grab cap, drag into PRODUCT zone
+        tl.to("#cursor", { x: 246, y: 692, duration: 0.5, ease: "power2.inOut" }, mt + 2.05);
+        tl.to("#src-cap", { scale: 0.92, duration: 0.15, ease: "power2.out" }, mt + 2.5);
+        tl.to("#src-cap", { x: 963, y: -197, duration: 0.7, ease: "power1.inOut" }, mt + 2.6);
+        tl.to("#cursor", { x: 1202, y: 494, duration: 0.7, ease: "power1.inOut" }, mt + 2.6);
+        // drop PRODUCT — the cap draws itself out
+        tl.to("#src-cap", { opacity: 0, duration: 0.2, ease: "sine.in" }, mt + 3.32);
+        tl.to("#zone-prod .zempty", { opacity: 0, duration: 0.2, ease: "sine.in" }, mt + 3.3);
+        tl.to("#fill-prod", { opacity: 1, duration: 0.2, ease: "sine.out" }, mt + 3.34);
+        tl.fromTo("#fill-prod .draw", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" }, mt + 3.36);
+        tl.to("#zone-prod", { borderColor: "rgba(129,140,248,0.9)", backgroundColor: "rgba(40,40,70,0.6)", duration: 0.3, ease: "sine.out" }, mt + 3.4);
+        tl.fromTo("#zone-prod .zcheck", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, mt + 4.15);
+
+        // 3) GENERATE activates, cursor moves to it, click
+        tl.to("#genbtn", { color: "#ececf5", backgroundColor: "rgba(99,102,241,0.92)", borderColor: "rgba(165,180,252,0.9)", boxShadow: "0 0 54px -8px rgba(99,102,241,0.85)", duration: 0.4, ease: "sine.out" }, mt + 4.15);
+        tl.to("#cursor", { x: 954, y: 762, duration: 0.5, ease: "power2.inOut" }, mt + 4.2);
+        // click: press + cursor tap + ripple
+        tl.to("#genbtn", { scale: 0.96, duration: 0.1, yoyo: true, repeat: 1, ease: "power2.inOut" }, mt + 4.75);
+        tl.to("#cursor", { scale: 0.85, duration: 0.1, yoyo: true, repeat: 1, ease: "power2.inOut" }, mt + 4.75);
+        tl.fromTo("#genbtn .ripple", { opacity: 0.85, scale: 0.3 }, { opacity: 0, scale: 6, duration: 0.6, ease: "power2.out" }, mt + 4.8);
+        // processing: label swap + progress sweep, cursor fades
+        tl.to("#genbtn .glabel, #genbtn .gspark", { opacity: 0, duration: 0.15, ease: "sine.in" }, mt + 4.9);
+        tl.to("#genbtn .gbusy", { opacity: 1, duration: 0.15, ease: "sine.out" }, mt + 5.0);
+        tl.fromTo("#genbtn .gbar", { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "power1.inOut" }, mt + 5.0);
+        tl.to("#cursor", { opacity: 0, duration: 0.3, ease: "sine.in" }, mt + 5.05);
+
+        // 4) finished mockup pops out (panel dims behind it)
+        tl.to("#s-make .panel", { opacity: 0.3, duration: 0.4, ease: "sine.inOut" }, mt + 5.35);
+        tl.fromTo("#glowburst", { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1.1, duration: 0.5, ease: "power2.out" }, mt + 5.35);
+        tl.fromTo("#result", { opacity: 0, scale: 0.5, y: 22 }, { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "back.out(1.7)" }, mt + 5.4);
+        tl.fromTo("#result .draw", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.55, ease: "power1.inOut" }, mt + 5.55);
+        tl.fromTo("#result .emblem", { opacity: 0, scale: 1.4, y: -12 }, { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(2)" }, mt + 5.95);
+        tl.fromTo("#result .rlabel", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, mt + 6.05);
+      })();
+
+      // --- Transition: make -> p1 (blur/scale out, plate crossfades in) ---
+      tl.to("#s-make", { filter: "blur(12px)", scale: 1.04, opacity: 0, duration: 0.55, ease: "power2.inOut" }, starts.p1);
+      tl.fromTo("#p1", { filter: "blur(10px)", scale: 0.97, opacity: 0 }, { filter: "blur(0px)", scale: 1, opacity: 1, duration: 0.55, ease: "power2.inOut", immediateRender: false }, starts.p1 + 0.1);
+      tl.set("#s-make", { opacity: 0 }, starts.p1 + 0.7);
+
+      // --- Plate-to-plate transitions: blur crossfade primary, one push accent ---
+      function blurCross(oldSel, newSel, T) {
+        tl.to(oldSel, { filter: "blur(10px)", scale: 1.03, opacity: 0, duration: 0.5, ease: "power2.inOut" }, T);
+        tl.fromTo(newSel,
+          { filter: "blur(10px)", scale: 0.97, opacity: 0 },
+          { filter: "blur(0px)", scale: 1, opacity: 1, duration: 0.5, ease: "power2.inOut", immediateRender: false }, T + 0.1);
+      }
+      function pushSlide(oldSel, newSel, T) {
+        tl.to(oldSel, { x: -1920, duration: 0.55, ease: "power3.inOut" }, T);
+        tl.fromTo(newSel, { x: 1920, opacity: 1 }, { x: 0, duration: 0.55, ease: "power3.inOut" }, T);
+        tl.set(oldSel, { opacity: 0 }, T + 0.65);
+      }
+      blurCross("#p1", "#p2", starts.p2);
+      blurCross("#p2", "#p3", starts.p3);
+      blurCross("#p3", "#p4", starts.p4);
+      pushSlide("#p4", "#p5", starts.p5); // mid-collection accent
+      blurCross("#p5", "#p6", starts.p6);
+      blurCross("#p6", "#p7", starts.p7);
+
+      // --- Transition: p7 -> outro (gentle wind-down) ---
+      tl.to("#p7", { opacity: 0, filter: "blur(14px)", scale: 1.02, duration: 0.7, ease: "power1.inOut" }, OUTRO_T);
+      tl.fromTo("#s-outro", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power1.inOut" }, OUTRO_T + 0.15);
+      tl.to("#chrome", { opacity: 0, duration: 0.5, ease: "sine.in" }, OUTRO_T);
+
+      // --- Per-plate entrances + ken burns + progress ---
+      PLATES.forEach(function (p, i) {
+        var T = starts[p.id];
+        var s = "#" + p.id;
+        var kbOrigin = i % 2 === 0 ? "50% 28%" : "50% 62%";
+
+        // slow ken burns across the plate's full on-screen life
+        tl.fromTo(s + " .plate-img img",
+          { scale: 1.06, transformOrigin: kbOrigin },
+          { scale: 1.17, duration: PLATE_DUR + 0.7, ease: "none" }, Math.max(T - 0.1, 0));
+
+        // entrances (varied eases + directions)
+        tl.fromTo(s + " .plate-img", { y: 44, scale: 0.96, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.65, ease: "power3.out" }, T + 0.12);
+        tl.fromTo(s + " .ghost-num", { opacity: 0, scale: 1.14 }, { opacity: 1, scale: 1, duration: 0.8, ease: "power2.out" }, T + 0.18);
+        tl.to(s + " .ghost-num", { y: -26, duration: PLATE_DUR - 0.8, ease: "none" }, T + 0.9);
+        tl.fromTo(s + " .plate-no", { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out" }, T + 0.25);
+        tl.fromTo(s + " .chip", { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2)" }, T + 0.38);
+        tl.fromTo(s + " h2 .line", { opacity: 0, y: 64 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out", stagger: 0.09 }, T + 0.32);
+        tl.fromTo(s + " .rule", { scaleX: 0 }, { scaleX: 1, duration: 0.45, ease: "power3.inOut", transformOrigin: "left center" }, T + 0.55);
+        tl.fromTo(s + " .brand", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.45, ease: "sine.out" }, T + 0.62);
+        tl.fromTo(s + " .spec", { opacity: 0, x: -18 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out", stagger: 0.09 }, T + 0.72);
+        tl.fromTo(s + " .plate-caption", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "sine.out" }, T + 0.8);
+        tl.fromTo(s + " .plate-tick", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.8)", stagger: 0.06 }, T + 0.5);
+
+        // progress tick fill
+        tl.to("#ticks .tick:nth-child(" + (i + 1) + ") .fill", { scaleX: 1, duration: 0.4, ease: "power2.out" }, T + 0.3);
+      });
+
+      // --- Outro entrances (+ allowed final fade-out) ---
+      tl.fromTo("#s-outro .kicker", { opacity: 0, y: -22 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, OUTRO_T + 0.35);
+      tl.fromTo("#s-outro h1", { opacity: 0, scale: 0.92 }, { opacity: 1, scale: 1, duration: 0.7, ease: "power4.out" }, OUTRO_T + 0.45);
+      tl.fromTo("#s-outro .rule", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.inOut" }, OUTRO_T + 0.8);
+      tl.fromTo("#s-outro .sub", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "sine.out" }, OUTRO_T + 0.95);
+      tl.fromTo("#s-outro .thumbs .th", { opacity: 0, y: 30, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.6)", stagger: 0.07 }, OUTRO_T + 1.1);
+      // final fade to black (final-scene exception)
+      tl.to("#fade-black", { opacity: 1, duration: 0.9, ease: "power2.inOut" }, 33.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
