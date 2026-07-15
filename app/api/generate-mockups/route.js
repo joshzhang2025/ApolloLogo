@@ -26,13 +26,11 @@ const ASPECT_RATIO = "3:4";
 // This is the main lever for keeping the logo faithful between images, and for
 // stopping the model from "auto-completing" a recognizable brand mark with
 // remembered taglines/slogans (e.g. adding "Think Different" to an Apple logo).
-// The ONE allowed change to logo colors is the contrast rule — normally the
-// per-request colorSpecClause (exact hexes, computed below), falling back to
-// the text-only CONTRAST_ADAPTATION when the client couldn't extract a palette.
+// Logo colors are reproduced exactly as in the reference and never changed for
+// contrast — the logo keeps its true colors even on a same-colored product.
 const LOGO_FIDELITY =
   " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the logo reference image — " +
-  "same shapes, proportions, line weights, and text, and the same colors as the reference (except " +
-  "where the contrast rule below requires a color change so the logo stays visible). " +
+  "same shapes, proportions, line weights, and text, and the same colors as the reference. " +
   "Do NOT restyle, crop, distort, or add gradients/shadows/effects to the logo artwork itself. " +
   "Reproduce ONLY the artwork that is actually visible in the logo reference. Do NOT add any text, " +
   "words, letters, taglines, slogans, company names, or extra symbols/graphics that are not already " +
@@ -58,98 +56,42 @@ const PRODUCT_REFERENCE =
   "only the product itself.";
 
 // FALLBACK ONLY — used when the client couldn't extract a logo palette (e.g.
-// canvas read failure). Real embroidery/screen-print shops recolor any part of
-// a design that matches the product (and would vanish into it) to a contrasting
-// thread/ink — e.g. black outlines become white on a black shirt. This tells the
-// model to do the same, for ANY product color. The problem this exists to solve
-// — that recolor/no-recolor is a judgment call the model can make differently
-// per shot — is exactly what colorSpecClause below fixes by computing the
-// substitution once, in code, and handing the model a closed hex-to-hex table.
-const CONTRAST_ADAPTATION =
-  " CONTRAST FOR VISIBILITY: The finished logo must stay clearly visible against the product's color " +
-  "as shown in the product reference photo. If any part of the logo is close in color to the product — " +
-  "so it would blend in and be hard to see (for example black lines/outlines on a black or navy product, " +
-  "or a white fill on a white or cream product) — recolor ONLY those low-contrast parts, and recolor " +
-  "them to a SINGLE FIXED contrasting color: pure white (#FFFFFF) on dark or medium-dark products, or " +
-  "solid black (#000000) on white or light products (on a true mid-tone product, use whichever of pure " +
-  "white or solid black contrasts more). Use that exact same contrast color in EVERY shot so all images " +
-  "match. Leave every logo part that already contrasts well with the product in its original reference " +
-  "color, and change nothing about the logo's shapes, proportions, layout, or text — adjust only the " +
-  "specific colors that would otherwise disappear. The whole logo must read crisply and identically " +
-  "across all shots.";
+// canvas read failure). Keeps the logo in its exact reference colors, identical
+// across shots, and explicitly forbids any contrast-based recoloring: the logo
+// stays true-to-color even when it closely matches the product.
+const COLOR_FIDELITY_FALLBACK =
+  " LOGO COLORS: Render the logo in its exact reference colors, and render those colors IDENTICALLY in " +
+  "every shot — no hue shift, tint, brightness change, thread/ink substitution, or reinterpretation from " +
+  "one shot to the next. Even if a logo color closely matches the product's color, keep the logo in its " +
+  "true reference colors — do NOT recolor any part of it to a contrasting color to make it stand out. " +
+  "Reproduce the logo colors exactly as shown, regardless of the product's color.";
 
 // ---------------------------------------------------------------------------
-// DETERMINISTIC COLOR SPEC — the actual fix for cross-shot color drift.
+// DETERMINISTIC COLOR SPEC — the fix for cross-shot color drift.
 // The client (studio/page.js, via colorUtils.js) extracts the logo's exact hex
-// palette and samples the product's color where the logo will sit, and sends
-// both here. Instead of asking the model to judge "is this low-contrast?" and
-// "what should I substitute?" separately for every shot — a judgment call that
-// can land differently each time — we compute the substitution ONCE in code
-// (WCAG-style contrast ratio) and hand every shot the identical closed hex-to-
-// hex table. There is nothing left for the model to decide.
+// palette and sends it here. We hand every shot the identical closed list of
+// exact hexes so the logo renders in the same colors across all shots. No
+// contrast substitution happens: the logo's true colors are preserved even
+// when they closely match the product — that safeguard was removed on purpose.
 // ---------------------------------------------------------------------------
 
-// Below this contrast ratio a logo color is treated as "would blend into the
-// product" and gets substituted. 1.8 is intentionally low (WCAG AA text uses
-// 4.5) — this only catches genuinely near-invisible pairings (e.g. near-black
-// on black), not merely similar hues that would still read fine.
-const CONTRAST_THRESHOLD = 1.8;
+// Build the closed color-spec clause from the client-extracted logo palette.
+// Returns null when the palette is missing/invalid, so the caller can fall back
+// to COLOR_FIDELITY_FALLBACK.
+function colorSpecClause(logoColors) {
+  if (!Array.isArray(logoColors) || !logoColors.length) return null;
 
-function hexToRgb(hex) {
-  const clean = hex.replace("#", "");
-  return [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
-}
-
-// WCAG relative luminance (sRGB → linear, then the standard luma weights).
-function relativeLuminance([r, g, b]) {
-  const toLinear = (c) => {
-    const cs = c / 255;
-    return cs <= 0.03928 ? cs / 12.92 : Math.pow((cs + 0.055) / 1.055, 2.4);
-  };
-  const [rl, gl, bl] = [r, g, b].map(toLinear);
-  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
-}
-
-// WCAG contrast ratio, 1 (identical) to 21 (black vs white).
-function contrastRatio(hexA, hexB) {
-  const la = relativeLuminance(hexToRgb(hexA));
-  const lb = relativeLuminance(hexToRgb(hexB));
-  const lighter = Math.max(la, lb);
-  const darker = Math.min(la, lb);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-// Build the closed color-spec clause from the client-extracted logo palette and
-// sampled product color. Returns null when either input is missing/invalid, so
-// the caller can fall back to CONTRAST_ADAPTATION.
-function colorSpecClause(logoColors, productColor) {
-  if (!Array.isArray(logoColors) || !logoColors.length || !productColor) return null;
-
-  // Single fixed contrast color for the whole logo (matches the old policy):
-  // white on a dark product, black on a light one.
-  const contrastTarget = relativeLuminance(hexToRgb(productColor)) > 0.5 ? "#000000" : "#FFFFFF";
-
-  const mappings = logoColors.map(({ hex }) => {
-    const adapted = contrastRatio(hex, productColor) < CONTRAST_THRESHOLD;
-    return { from: hex, to: adapted ? contrastTarget : hex, adapted };
-  });
-
-  const lines = mappings
-    .map((m) =>
-      m.adapted
-        ? `${m.from} → render as ${m.to} (pre-computed so it stays visible on this product)`
-        : `${m.from} (unchanged — already contrasts well against this product)`
-    )
-    .join("; ");
+  const lines = logoColors.map(({ hex }) => hex).join("; ");
 
   return (
-    " EXACT LOGO COLORS (final — do not recompute): The logo consists of exactly these colors, already " +
-    `checked against the product's actual color for visibility: ${lines}. Render each color EXACTLY as ` +
-    "specified above, in EVERY shot, with zero variation between shots — the same hex value must appear " +
-    "in the product, close-up, and on-model images alike. Never substitute, tint, lighten, darken, blend, " +
-    "add a gradient to, or otherwise reinterpret any of these colors, and never make a different contrast " +
-    "decision in one shot than in another — this palette was already computed correctly and is final; do " +
-    "not re-derive or re-judge it from the logo reference image."
+    " EXACT LOGO COLORS (final — do not recompute): The logo consists of exactly these colors: " +
+    `${lines}. Render each color EXACTLY as specified above, in EVERY shot, with zero variation between ` +
+    "shots — the same hex value must appear in the product, close-up, and on-model images alike. Never " +
+    "substitute, tint, lighten, darken, blend, add a gradient to, or otherwise reinterpret any of these " +
+    "colors. Even if a color closely matches the product's color, keep it EXACTLY as specified — do NOT " +
+    "swap it for a contrasting color to make the logo stand out. Render the logo in its true colors " +
+    "regardless of the product color; this palette is final, so do not re-derive or re-judge it from the " +
+    "logo reference image."
   );
 }
 
@@ -183,7 +125,7 @@ const DECORATED_MATCH =
   "identical logo placement on the product, identical logo size relative to the product, identical " +
   "logo colors, identical product color and style. The logo colors shown in that last reference are " +
   "AUTHORITATIVE — match them pixel-for-pixel rather than re-deriving colors from the original logo " +
-  "artwork or making a fresh contrast judgment. Do NOT copy that reference's camera angle, " +
+  "artwork. Do NOT copy that reference's camera angle, " +
   "framing, crop, lighting, or background — only the product itself and its decoration must match it " +
   "perfectly, as if the very same item were photographed again.";
 
@@ -515,7 +457,7 @@ async function generateShotSet(views, opts, emit) {
     : [opts.logo, opts.productImage];
   // Computed ONCE per request (not per shot) — every shot gets the identical
   // color instruction, which is the whole point: no shot-to-shot judgment drift.
-  const colorClause = colorSpecClause(opts.logoColors, opts.productColor) || CONTRAST_ADAPTATION;
+  const colorClause = colorSpecClause(opts.logoColors) || COLOR_FIDELITY_FALLBACK;
   const safe = (view, prompt, references) =>
     generateOne(view, prompt, references, seed, colorClause).catch((e) => {
       const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
@@ -559,9 +501,11 @@ export async function POST(req) {
       typeof markerImage === "string" &&
       [marker.x, marker.y, marker.r].every((n) => typeof n === "number" && isFinite(n));
 
-    // Client-extracted color inputs (see colorUtils.js) — loosely validated and
+    // Client-extracted logo palette (see colorUtils.js) — loosely validated and
     // silently dropped if malformed, so a bad payload just falls back to
-    // CONTRAST_ADAPTATION rather than erroring the whole request.
+    // COLOR_FIDELITY_FALLBACK rather than erroring the whole request. The sampled
+    // productColor is still accepted for backward-compat but no longer used now
+    // that contrast substitution has been removed.
     const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
     const cleanLogoColors = Array.isArray(logoColors)
       ? logoColors.filter((c) => c && typeof c.hex === "string" && HEX_RE.test(c.hex))

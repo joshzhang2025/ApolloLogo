@@ -39,6 +39,32 @@ const SIZES = [
   { value: "large", name: "Large", nameZh: "大" },
 ];
 
+// ---- Color-similarity pre-check ----
+// The backend no longer auto-recolors a logo that would blend into the product
+// (a black logo on a black hat now stays black). To avoid silently generating an
+// invisible logo, we warn the user first when the logo color and the product
+// color where it will sit are too close, and let them continue anyway.
+const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+// WCAG relative luminance (sRGB → linear, standard luma weights).
+function relLuminance([r, g, b]) {
+  const lin = (c) => {
+    const cs = c / 255;
+    return cs <= 0.03928 ? cs / 12.92 : Math.pow((cs + 0.055) / 1.055, 2.4);
+  };
+  const [rl, gl, bl] = [r, g, b].map(lin);
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+}
+// WCAG contrast ratio, 1 (identical) to 21 (black vs white).
+function contrastRatio(hexA, hexB) {
+  const la = relLuminance(hexToRgb(hexA));
+  const lb = relLuminance(hexToRgb(hexB));
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// Below this ratio, a logo color and the product color read as "too similar"
+// and the logo risks disappearing. Intentionally low so we only flag genuinely
+// near-invisible pairings, not merely similar hues that would still read fine.
+const COLOR_WARN_THRESHOLD = 2.0;
+
 // UI copy for both languages. Switching `lang` re-renders everything.
 const STRINGS = {
   en: {
@@ -97,6 +123,13 @@ const STRINGS = {
     emptyBody:
       "Upload your logo and a photo of your product, pick which shots you want, then hit Generate. Every run is saved below — change the images or settings and generate again, and nothing you already made goes away.",
     regenerate: "Regenerate",
+    colorWarnTitle: "Logo color is too close to the product color",
+    colorWarnBody:
+      "Your logo color is very similar to the product color where it will sit, so the logo may blend in and be hard to see. We recommend changing your logo or product color for better contrast. You can also continue anyway.",
+    colorWarnLogo: "Logo color",
+    colorWarnProduct: "Product color",
+    colorWarnBack: "Go back",
+    colorWarnContinue: "Continue anyway",
   },
   zh: {
     studioEyebrow: "工作台",
@@ -153,6 +186,13 @@ const STRINGS = {
     emptyTitle: "样机将显示在这里",
     emptyBody: "上传 Logo 和产品照片，选择需要的镜头，然后点击生成。每次生成都会保存在下方 —— 更换图片或设置后再次生成,之前的成果都不会消失。",
     regenerate: "重新生成",
+    colorWarnTitle: "Logo 颜色与产品颜色过于接近",
+    colorWarnBody:
+      "您的 Logo 颜色与其所在位置的产品颜色非常相近，Logo 可能会融入背景、难以辨认。建议更换 Logo 或产品颜色以获得更好的对比度。您也可以选择仍然继续。",
+    colorWarnLogo: "Logo 颜色",
+    colorWarnProduct: "产品颜色",
+    colorWarnBack: "返回",
+    colorWarnContinue: "仍然继续",
   },
 };
 
@@ -492,6 +532,8 @@ export default function Studio() {
   } = useStudioState();
   const [markerModal, setMarkerModal] = useState(false); // circle-editor window open?
   const [error, setError] = useState("");
+  const [checkingColors, setCheckingColors] = useState(false); // running the pre-generate color check
+  const [colorWarn, setColorWarn] = useState(null); // { run, logoHex, productHex, ratio } | null
   const [lightbox, setLightbox] = useState(null); // { src, caption, filename } | null
   const [zoomed, setZoomed] = useState(false);
   const resultsRef = useRef(null); // scrolled into view on mobile when generating
@@ -546,6 +588,16 @@ export default function Studio() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [markerModal]);
+
+  // Close the color-similarity warning on Escape (same as "Go back").
+  useEffect(() => {
+    if (!colorWarn) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setColorWarn(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [colorWarn]);
 
   // Shared file reader for both upload zones.
   const readFile = useCallback(
@@ -663,14 +715,58 @@ export default function Studio() {
     [t, batchSeq, setBatches]
   );
 
-  const generate = () =>
-    runGeneration({
+  // Clicking Generate first runs a quick client-side color-similarity check: if
+  // the logo color would sit almost invisibly on the product (the backend no
+  // longer auto-recolors it), we surface a warning modal and let the user either
+  // go back and adjust a color or continue anyway. The extraction here reuses the
+  // same helpers the run itself uses, so it's fast and cache-warm.
+  const startRun = (run) => {
+    setColorWarn(null);
+    runGeneration(run);
+  };
+
+  const generate = async () => {
+    if (!uploadsReady || !views.length || isBusy || checkingColors) return;
+    const run = {
       logo,
       logoName,
       productImage,
       productImageName,
       settings: { method, views, placement, size, scene, marker },
-    });
+    };
+    setError("");
+    setCheckingColors(true);
+    try {
+      const [palette, productHex] = await Promise.all([
+        extractPalette(logo).catch(() => null),
+        sampleRegionColor(productImage, marker).catch(() => null),
+      ]);
+      // Only warn if a MAJORITY of the logo (by area) is too close to the product
+      // color — a small low-contrast accent shouldn't trigger it. Each palette
+      // entry carries `share` (its fraction of the logo), so we sum the share of
+      // the low-contrast colors and flag only when that total clears 50%.
+      if (Array.isArray(palette) && palette.length && productHex) {
+        const lowContrast = palette.filter((c) => contrastRatio(c.hex, productHex) < COLOR_WARN_THRESHOLD);
+        const blendShare = lowContrast.reduce((sum, c) => sum + c.share, 0);
+        if (blendShare > 0.5) {
+          // Show the most dominant blending color as the representative swatch.
+          const worst = lowContrast.reduce((a, b) => (b.share > a.share ? b : a));
+          setColorWarn({ run, logoHex: worst.hex, productHex, blendShare });
+          return; // wait for the user to choose (finally clears checkingColors)
+        }
+      }
+    } catch {
+      // A failed check shouldn't block generation — just skip the warning.
+    } finally {
+      setCheckingColors(false);
+    }
+    startRun(run);
+  };
+
+  const continueAnyway = () => {
+    if (colorWarn?.run) startRun(colorWarn.run);
+    else setColorWarn(null);
+  };
 
   const regenerateBatch = (b) =>
     runGeneration({
@@ -994,10 +1090,10 @@ export default function Studio() {
                 {/* Generate */}
                 <button
                   onClick={generate}
-                  disabled={!uploadsReady || !views.length || isBusy}
+                  disabled={!uploadsReady || !views.length || isBusy || checkingColors}
                   className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:shadow-xl hover:shadow-indigo-600/30 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 >
-                  {isBusy ? (
+                  {isBusy || checkingColors ? (
                     <>
                       <IconSpinner />
                       {t.generating}
@@ -1238,6 +1334,76 @@ export default function Studio() {
       </main>
 
       <SiteFooter lang={lang} />
+
+      {/* ---------- Color-similarity warning — shown when the logo color would sit
+           almost invisibly on the product. "Continue anyway" runs the generation
+           as-is; "Go back" closes so the user can change a color first. ---------- */}
+      {colorWarn && (
+        <div
+          onClick={() => setColorWarn(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold">{t.colorWarnTitle}</h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+                  {t.colorWarnBody}
+                </p>
+              </div>
+            </div>
+
+            {/* swatches: the offending logo color vs the sampled product color */}
+            <div className="mt-4 flex items-center gap-3">
+              {[
+                { label: t.colorWarnLogo, hex: colorWarn.logoHex },
+                { label: t.colorWarnProduct, hex: colorWarn.productHex },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="flex flex-1 items-center gap-2.5 rounded-xl border border-zinc-200 p-2.5 dark:border-zinc-800"
+                >
+                  <span
+                    className="h-9 w-9 flex-none rounded-lg border border-black/10 dark:border-white/15"
+                    style={{ backgroundColor: s.hex }}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{s.label}</p>
+                    <p className="font-mono text-xs font-semibold">{s.hex}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setColorWarn(null)}
+                className="rounded-xl border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                {t.colorWarnBack}
+              </button>
+              <button
+                type="button"
+                onClick={continueAnyway}
+                className="rounded-xl bg-amber-500 px-5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-600"
+              >
+                {t.colorWarnContinue}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---------- Circle editor window — draw / move / resize the placement circle.
            Closing (Done, backdrop, Esc) keeps the circle; only Clear removes it. ---------- */}
