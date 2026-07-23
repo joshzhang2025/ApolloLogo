@@ -214,6 +214,36 @@ export async function extractPalette(logoDataUrl, k = 6) {
   return merged.filter((c) => c.share >= 0.03).sort((a, b) => b.share - a.share);
 }
 
+// Invert a logo's RGB colors (black↔white, and every hue to its complement)
+// while leaving alpha untouched, so a logo that would blend into a same-colored
+// product — a black logo on a black hat — flips to a visible contrast (white).
+// Transparent pixels stay transparent. Returns a PNG data URL. Capped at MAX_DIM
+// like the other canvas helpers so huge uploads stay snappy.
+export async function invertImageColors(logoDataUrl) {
+  const { img, dims } = await loadImage(logoDataUrl);
+  const iw = dims?.w || img.naturalWidth;
+  const ih = dims?.h || img.naturalHeight;
+  const scale = Math.min(1, MAX_DIM / Math.max(iw, ih));
+  const w = Math.max(1, Math.round(iw * scale));
+  const h = Math.max(1, Math.round(ih * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 255 - data[i];
+    data[i + 1] = 255 - data[i + 1];
+    data[i + 2] = 255 - data[i + 2];
+    // data[i + 3] (alpha) is left as-is so transparency is preserved.
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 // Average color of a region of the product photo — where the logo will
 // actually sit — used as the "what am I printing/stitching onto" reference
 // for computing contrast substitutions server-side. `region` is the drawn

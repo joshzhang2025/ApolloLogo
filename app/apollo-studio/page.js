@@ -5,8 +5,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteHeader, SiteFooter } from "../SiteChrome";
-import { useStudioState } from "../StudioStateContext";
+import { useRouter } from "next/navigation";
+import { useApolloStudioState } from "../StudioStateContext";
 import { extractPalette, sampleRegionColor, invertImageColors } from "../colorUtils";
+import { PRODUCTS, GARMENT_COLORS, PRICE_TIERS, computePricing } from "./catalog";
 
 // Decoration methods. The uploaded product photo defines the product itself;
 // this picks how the logo is applied to it.
@@ -38,6 +40,26 @@ const SIZES = [
   { value: "medium", name: "Medium", nameZh: "中" },
   { value: "large", name: "Large", nameZh: "大" },
 ];
+
+// Preset product catalog. Apollo Studio has NO product upload — the customer
+// picks one of these ready-made blanks instead. Each `file` is served from
+// /public/products; selecting one fetches it and turns it into a data URL so
+// the rest of the pipeline (color sampling, marker, backend) is unchanged.
+// Fetch a preset product image from /public and convert it to a base64 data URL,
+// so a picked product behaves exactly like an uploaded one everywhere downstream
+// (canvas color sampling, the marker overlay, and the backend's OpenRouter call
+// which needs a data/https URL, not a bare app-relative path).
+async function productImageToDataUrl(file) {
+  const res = await fetch(file);
+  if (!res.ok) throw new Error("Could not load product image");
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read product image"));
+    reader.readAsDataURL(blob);
+  });
+}
 
 // ---- Color-similarity pre-check ----
 // The backend no longer auto-recolors a logo that would blend into the product
@@ -72,9 +94,14 @@ const STRINGS = {
     studioTitle: "Create your mockups",
     studioSub: "Upload your logo and your product — get a consistent, client-ready shot set.",
     s1Title: "Upload your logo",
-    s2Title: "Upload your product",
+    s2Title: "Choose your product",
     s3Title: "Choose method & shots",
     s4Title: "Fine-tune the look",
+    productPickHint: "Pick a blank product to decorate",
+    colorLabel: "Product color",
+    colorAsShown: "As shown",
+    colorSelected: "Selected",
+    errProductLoad: "Couldn't load that product. Please try another.",
     methodLabel: "Decoration method",
     shotsLabel: "Shots to generate",
     logoPlacement: "Logo placement",
@@ -127,6 +154,23 @@ const STRINGS = {
     emptyBody:
       "Upload your logo and a photo of your product, pick which shots you want, then hit Generate. Every run is saved below — change the images or settings and generate again, and nothing you already made goes away.",
     regenerate: "Regenerate",
+    pricingTitle: "Estimated pricing",
+    pricingSub: "Indicative per-unit price for this exact design.",
+    pricingQtyCol: "Qty",
+    pricingUnitCol: "Price / unit",
+    pricingEmb: "Embroidery",
+    pricingPrint: "Screen print",
+    pricingStitches: "stitches",
+    pricingColorsOne: "ink color",
+    pricingColorsMany: "ink colors",
+    pricingSetup: "Set-up",
+    pricingPerLocation: "per location",
+    pricingPerScreen: "per screen",
+    pricingWaived: "Set-up waived on orders of 144+ pieces.",
+    pricingExtraStitch: "Includes up to 7,000 stitches; +$0.59/pc per 1,000 over.",
+    pricingExtraColor: "One screen per ink color.",
+    pricingDisclaimer: "Example pricing for demonstration only — not a real quote.",
+    orderCta: "Order this design",
     colorWarnTitle: "Logo color is too close to the product color",
     colorWarnBody:
       "Your logo color is very similar to the product color where it will sit, so the logo may blend in and be hard to see. We recommend changing your logo or product color for better contrast. You can also continue anyway.",
@@ -140,9 +184,14 @@ const STRINGS = {
     studioTitle: "生成您的样机",
     studioSub: "上传您的 Logo 和产品图 —— 获得一套风格统一、可直接交付的样机图。",
     s1Title: "上传 Logo",
-    s2Title: "上传产品图",
+    s2Title: "选择产品",
     s3Title: "选择工艺与镜头",
     s4Title: "调整细节",
+    productPickHint: "选择要装饰的空白产品",
+    colorLabel: "产品颜色",
+    colorAsShown: "原色",
+    colorSelected: "已选",
+    errProductLoad: "无法加载该产品，请换一个。",
     methodLabel: "装饰工艺",
     shotsLabel: "要生成的镜头",
     logoPlacement: "Logo 位置",
@@ -194,6 +243,23 @@ const STRINGS = {
     emptyTitle: "样机将显示在这里",
     emptyBody: "上传 Logo 和产品照片，选择需要的镜头，然后点击生成。每次生成都会保存在下方 —— 更换图片或设置后再次生成,之前的成果都不会消失。",
     regenerate: "重新生成",
+    pricingTitle: "预估价格",
+    pricingSub: "该设计的每件参考单价。",
+    pricingQtyCol: "数量",
+    pricingUnitCol: "单价",
+    pricingEmb: "刺绣",
+    pricingPrint: "丝网印刷",
+    pricingStitches: "针",
+    pricingColorsOne: "个印色",
+    pricingColorsMany: "个印色",
+    pricingSetup: "制版费",
+    pricingPerLocation: "每个位置",
+    pricingPerScreen: "每个网版",
+    pricingWaived: "订购 144 件及以上免收制版费。",
+    pricingExtraStitch: "含 7,000 针以内；超出部分每千针每件 +$0.59。",
+    pricingExtraColor: "每个印色一个网版。",
+    pricingDisclaimer: "示例价格，仅供演示，非正式报价。",
+    orderCta: "订购此设计",
     colorWarnTitle: "Logo 颜色与产品颜色过于接近",
     colorWarnBody:
       "您的 Logo 颜色与其所在位置的产品颜色非常相近，Logo 可能会融入背景、难以辨认。建议更换 Logo 或产品颜色以获得更好的对比度。您也可以选择仍然继续。",
@@ -277,6 +343,125 @@ function IconSparkles(props) {
     </svg>
   );
 }
+function IconTag(props) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+      <line x1="7" y1="7" x2="7.01" y2="7" />
+    </svg>
+  );
+}
+function IconCart(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+  );
+}
+
+// First successfully-generated shot of a batch, as a data URL (used as the
+// design's thumbnail on the order page), or null if none succeeded.
+function firstOkImage(batch) {
+  for (const r of batch.results) if (r.ok && r.images?.[0]) return `data:image/png;base64,${r.images[0]}`;
+  return null;
+}
+
+// Snapshot of a batch's DESIGN for the order flow. Carries just what the order
+// page + cart need — the settings that drive pricing, the logo palette (for
+// screen-print color count), a preview image, and the design's default color.
+function makeOrderDraft(batch) {
+  return {
+    batchId: batch.id,
+    productSku: batch.settings.productSku,
+    productName: batch.productImageName,
+    method: batch.settings.method,
+    settings: batch.settings,
+    logoColors: batch.logoColors || null,
+    garmentColor: batch.settings.garmentColor || null,
+    preview: firstOkImage(batch),
+  };
+}
+
+// Pricing panel shown under a finished batch's mockups — a quantity/price table
+// plus the set-up and stitch/ink-color notes, all derived from the design via
+// computePricing (so the same design always shows the same numbers). `onOrder`
+// takes the customer to the order page seeded with this design.
+function PricingPanel({ batch, t, lang, onOrder }) {
+  const p = computePricing(batch);
+  const isEmb = p.method === "embroidery";
+  const num = (n) => n.toLocaleString(lang === "zh" ? "zh-CN" : "en-US");
+  const methodChip = isEmb
+    ? `${t.pricingEmb} · ~${num(p.stitches)} ${t.pricingStitches}`
+    : `${t.pricingPrint} · ${p.colors} ${p.colors === 1 ? t.pricingColorsOne : t.pricingColorsMany}`;
+  return (
+    <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+            <IconTag />
+          </span>
+          <div>
+            <h4 className="text-sm font-semibold leading-tight">{t.pricingTitle}</h4>
+            <p className="text-[11px] leading-tight text-zinc-400">{t.pricingSub}</p>
+          </div>
+        </div>
+        <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+          {methodChip}
+        </span>
+      </div>
+
+      {/* quantity → per-unit price table */}
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[320px] text-left text-xs">
+          <thead>
+            <tr className="border-b border-zinc-200 text-[10px] uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
+              <th className="pb-1.5 pr-2 font-medium">{t.pricingQtyCol}</th>
+              {p.tiers.map((ti) => (
+                <th key={ti.qty} className="pb-1.5 pl-2 text-right font-medium">
+                  {num(ti.qty)}
+                  {ti.qty === PRICE_TIERS[PRICE_TIERS.length - 1] ? "+" : ""}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="py-1.5 pr-2 font-medium text-zinc-500 dark:text-zinc-400">{t.pricingUnitCol}</td>
+              {p.tiers.map((ti) => (
+                <td key={ti.qty} className="py-1.5 pl-2 text-right font-semibold tabular-nums">
+                  ${ti.unit.toFixed(2)}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* set-up + method notes */}
+      <ul className="mt-3 space-y-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">
+        <li>
+          <span className="font-medium text-zinc-600 dark:text-zinc-300">{t.pricingSetup}:</span>{" "}
+          ${p.setupTotal.toFixed(2)}
+          {isEmb ? ` ${t.pricingPerLocation}` : ""} — {t.pricingWaived}
+        </li>
+        <li>{isEmb ? t.pricingExtraStitch : t.pricingExtraColor}</li>
+        <li className="text-zinc-400 dark:text-zinc-500">{t.pricingDisclaimer}</li>
+      </ul>
+
+      <button
+        type="button"
+        onClick={() => onOrder(batch)}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-[0.99]"
+      >
+        <IconCart />
+        {t.orderCta}
+      </button>
+    </div>
+  );
+}
+
 // Numbered step chip; turns into a green check once the step is satisfied.
 function StepBadge({ n, done }) {
   return (
@@ -538,6 +723,8 @@ export default function Studio() {
     logoName, setLogoName,
     productImage, setProductImage,
     productImageName, setProductImageName,
+    productSku, setProductSku,
+    garmentColor, setGarmentColor,
     method, setMethod,
     views, setViews,
     placement, setPlacement,
@@ -545,8 +732,10 @@ export default function Studio() {
     scene, setScene,
     marker, setMarker,
     batches, setBatches,
+    setOrderDraft,
     batchSeq,
-  } = useStudioState();
+  } = useApolloStudioState();
+  const router = useRouter();
   const [markerModal, setMarkerModal] = useState(false); // circle-editor window open?
   const [error, setError] = useState("");
   const [checkingColors, setCheckingColors] = useState(false); // running the pre-generate color check
@@ -637,6 +826,33 @@ export default function Studio() {
     setViews((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
   }
 
+  // Pick one of the preset products. Loads its image into a data URL (so it flows
+  // through the pipeline like an uploaded photo) and clears any circle drawn on a
+  // previously selected product. The chosen garment color is kept — it applies to
+  // whichever product is selected.
+  const selectProduct = useCallback(
+    async (p) => {
+      setError("");
+      setMarker(null); // a circle placed on a different product is meaningless here
+      setProductSku(p.sku);
+      setProductImageName(lang === "zh" ? p.nameZh : p.name);
+      try {
+        setProductImage(await productImageToDataUrl(p.file));
+      } catch {
+        setProductSku(null);
+        setProductImage(null);
+        setProductImageName("");
+        setError(t.errProductLoad);
+      }
+    },
+    [lang, t, setMarker, setProductSku, setProductImageName, setProductImage]
+  );
+
+  // Preset garment color. Clicking the active color again clears it (back to the
+  // product's own color). There is intentionally no free color picker.
+  const selectGarmentColor = (c) =>
+    setGarmentColor((cur) => (cur?.id === c.id ? null : c));
+
   // Kick off one generation run. Each run captures the images + settings it used
   // and appends a new batch to the history; existing batches are never touched.
   // `regenerate` replays a past batch with its own captured images/settings.
@@ -682,6 +898,9 @@ export default function Studio() {
           extractPalette(runLogo).catch(() => null),
           sampleRegionColor(runProduct, batch.settings.marker).catch(() => null),
         ]);
+        // Stash the extracted palette on the batch so the pricing estimator can
+        // count ink colors for screen-print jobs (embroidery ignores it).
+        if (logoColors) setBatches((bs) => bs.map((b) => (b.id === id ? { ...b, logoColors } : b)));
         const res = await fetch("/api/generate-mockups", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -697,6 +916,9 @@ export default function Studio() {
             markerImage,
             logoColors,
             productColor,
+            garmentColor: batch.settings.garmentColor
+              ? { name: batch.settings.garmentColor.name, hex: batch.settings.garmentColor.hex }
+              : null,
           }),
         });
         if (!res.ok) {
@@ -750,14 +972,19 @@ export default function Studio() {
       logoName,
       productImage,
       productImageName,
-      settings: { method, views, placement, size, scene, marker },
+      settings: { method, views, placement, size, scene, marker, garmentColor, productSku },
     };
     setError("");
     setCheckingColors(true);
     try {
+      // When a preset garment color is chosen the product will be re-dyed to it,
+      // so the contrast check compares the logo against THAT color, not the
+      // (soon-to-be-replaced) color sampled from the original product photo.
       const [palette, productHex] = await Promise.all([
         extractPalette(logo).catch(() => null),
-        sampleRegionColor(productImage, marker).catch(() => null),
+        garmentColor
+          ? Promise.resolve(garmentColor.hex)
+          : sampleRegionColor(productImage, marker).catch(() => null),
       ]);
       // Only warn if a MAJORITY of the logo (by area) is too close to the product
       // color — a small low-contrast accent shouldn't trigger it. Each palette
@@ -833,6 +1060,13 @@ export default function Studio() {
   const removeBatch = (id) => setBatches((bs) => bs.filter((b) => b.id !== id));
   const clearAll = () => setBatches([]);
 
+  // "Order this design" → snapshot the batch's design into the shared order draft
+  // and go to the order page, where the customer picks color(s), sizes, and qty.
+  const startOrder = (batch) => {
+    setOrderDraft(makeOrderDraft(batch));
+    router.push("/apollo-studio/order");
+  };
+
   const isBusy = batches.some((b) => b.pending);
   const hasAnyResults = batches.length > 0;
   const uploadsReady = !!logo && !!productImage;
@@ -858,6 +1092,12 @@ export default function Studio() {
     if (s.marker) chips.push({ label: t.markChip, accent: true });
     else chips.push({ label: nm(sz) }, { label: nm(pl) });
     if (s.scene) chips.push({ label: t.sceneTag, accent: true });
+    // Preset garment color the product was re-dyed to (Apollo Studio).
+    if (s.garmentColor)
+      chips.push({
+        label: lang === "zh" ? s.garmentColor.nameZh : s.garmentColor.name,
+        swatch: s.garmentColor.hex,
+      });
     return chips;
   };
   const fmtTime = (ts) =>
@@ -916,26 +1156,108 @@ export default function Studio() {
                   </button>
                 )}
 
-                {/* Step 2 — product photo upload */}
+                {/* Step 2 — pick a preset product (no upload) + choose its color */}
                 <div className="mb-3 mt-7 flex items-center gap-2.5">
                   <StepBadge n={2} done={!!productImage} />
                   <h3 className="text-sm font-semibold">{t.s2Title}</h3>
                 </div>
-                <UploadZone
-                  image={productImage}
-                  name={productImageName}
-                  hint={t.productUploadHint}
-                  onFile={(f) => {
-                    setMarker(null); // a circle drawn on the old photo is meaningless on a new one
-                    readFile(f, setProductImage, setProductImageName);
-                  }}
-                  onClear={() => {
-                    setMarker(null);
-                    setProductImage(null);
-                    setProductImageName("");
-                  }}
-                  t={t}
-                />
+
+                {/* preset product grid */}
+                <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                  <p className="text-[11px] leading-snug text-zinc-400">{t.productPickHint}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {PRODUCTS.map((p) => {
+                      const on = productSku === p.sku;
+                      const name = lang === "zh" ? p.nameZh : p.name;
+                      return (
+                        <button
+                          key={p.sku}
+                          type="button"
+                          onClick={() => selectProduct(p)}
+                          aria-pressed={on}
+                          title={name}
+                          className={`group relative flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition-all active:scale-[0.98] ${
+                            on
+                              ? "border-indigo-500 bg-indigo-50/70 ring-1 ring-indigo-500 dark:bg-indigo-950/40"
+                              : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/40"
+                          }`}
+                        >
+                          <span className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg bg-white dark:bg-zinc-100">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={p.file}
+                              alt={name}
+                              loading="lazy"
+                              className="h-full w-full object-contain p-1"
+                            />
+                          </span>
+                          <span className="line-clamp-2 text-[10px] font-medium leading-tight text-zinc-600 dark:text-zinc-300">
+                            {name}
+                          </span>
+                          {on && (
+                            <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-white shadow-sm">
+                              <IconCheck />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* preset color swatches — no free color picker, only these */}
+                <div className="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t.colorLabel}</h4>
+                    <span className="text-[10px] font-medium text-zinc-400">
+                      {garmentColor ? (lang === "zh" ? garmentColor.nameZh : garmentColor.name) : t.colorAsShown}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {/* "As shown" clears the selection → keep the product's own color */}
+                    <button
+                      type="button"
+                      onClick={() => setGarmentColor(null)}
+                      aria-pressed={!garmentColor}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                        !garmentColor
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:border-indigo-500 dark:bg-indigo-950/40 dark:text-indigo-400"
+                          : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400"
+                      }`}
+                    >
+                      {t.colorAsShown}
+                    </button>
+                    {GARMENT_COLORS.map((c) => {
+                      const on = garmentColor?.id === c.id;
+                      const name = lang === "zh" ? c.nameZh : c.name;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectGarmentColor(c)}
+                          aria-pressed={on}
+                          aria-label={name}
+                          title={name}
+                          className={`relative flex h-7 w-7 items-center justify-center rounded-full border transition-transform hover:scale-110 ${
+                            on
+                              ? "border-transparent ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900"
+                              : "border-black/15 dark:border-white/20"
+                          }`}
+                          style={{ backgroundColor: c.hex }}
+                        >
+                          {on && (
+                            <span
+                              className="drop-shadow"
+                              style={{ color: relLuminance(hexToRgb(c.hex)) > 0.5 ? "#111" : "#fff" }}
+                            >
+                              <IconCheck />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {/* Step 3 — decoration method + which shots */}
                 <div className="mb-3 mt-7 flex items-center justify-between gap-2">
@@ -1281,6 +1603,12 @@ export default function Studio() {
                                         : "border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
                                     }`}
                                   >
+                                    {chip.swatch && (
+                                      <span
+                                        className="h-2.5 w-2.5 flex-none rounded-full border border-black/15 dark:border-white/25"
+                                        style={{ backgroundColor: chip.swatch }}
+                                      />
+                                    )}
                                     {chip.label}
                                   </span>
                                 ))}
@@ -1390,6 +1718,13 @@ export default function Studio() {
                                 />
                               ))}
                         </div>
+
+                        {/* Pricing appears once the mockups are done — a per-unit
+                            estimate for this exact design, independent of how many
+                            shots were rendered. */}
+                        {!batch.pending && batch.results.some((r) => r.ok) && (
+                          <PricingPanel batch={batch} t={t} lang={lang} onOrder={startOrder} />
+                        )}
                       </section>
                     ))}
                   </div>

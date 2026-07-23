@@ -23,25 +23,33 @@ const OUTPUT_FORMAT = "png";
 const ASPECT_RATIO = "3:4";
 
 // Appended to EVERY prompt so the logo renders consistently across all shots.
-// This is the main lever for keeping the logo faithful between images, and for
-// stopping the model from "auto-completing" a recognizable brand mark with
-// remembered taglines/slogans (e.g. adding "Think Different" to an Apple logo).
-// Logo colors are reproduced exactly as in the reference and never changed for
-// contrast — the logo keeps its true colors even on a same-colored product.
+// This is the main lever for keeping the logo's ARTWORK faithful between images,
+// and for stopping the model from "auto-completing" a recognizable brand mark
+// with remembered taglines/slogans (e.g. adding "Think Different" to an Apple
+// logo). Color fidelity is handled separately by LOGO_COLOR_FIDELITY below — this
+// clause deliberately says nothing about color.
 const LOGO_FIDELITY =
   " CRITICAL: Reproduce the provided logo EXACTLY as it appears in the logo reference image — " +
-  "same shapes, proportions, line weights, and text, and the same colors as the reference. " +
+  "same shapes, proportions, and line weights. " +
   "Do NOT restyle, crop, distort, or add gradients/shadows/effects to the logo artwork itself. " +
   "Reproduce ONLY the artwork that is actually visible in the logo reference. Do NOT add any text, " +
   "words, letters, taglines, slogans, company names, or extra symbols/graphics that are not already " +
   "present in the reference — if the reference has no text, the mockup must have no text. Even if you " +
   "recognize the logo as belonging to a real brand, never complete it from memory with a slogan, " +
   "wordmark, or additional marks. The decorated product must show the reference artwork and nothing else. " +
-  "COLOR CONSISTENCY (very important): render the logo in its exact reference colors, and render those " +
-  "colors IDENTICALLY in every shot — the logo must be the same color in the product, close-up, and " +
-  "on-model images, with no hue shift, tint, brightness change, thread-palette substitution, or " +
-  "reinterpretation from one shot to the next. Keep the logo's shapes, layout, proportions, AND colors " +
-  "identical across every mockup.";
+  "Keep the logo's shapes, layout, and proportions identical across every mockup.";
+
+// Appended once per request. Positive, image-anchored: the logo PNG is the sole
+// color authority. Deliberately says NOTHING about inversion/contrast — naming a
+// black<->white flip in the prompt is exactly what made the image model perform
+// it, and an already-correctly-colored reference gives it no color decision to
+// make. Contrast on same-colored products is handled upstream by the client's
+// "Invert logo colors" button (a pure pixel operation on the PNG).
+const LOGO_COLOR_FIDELITY =
+  " LOGO COLORS: Reproduce the logo's colors exactly as they appear in the logo " +
+  "reference image, and keep them identical in every shot (product, close-up, and " +
+  "on-model) — no hue shift, tint, or brightness change from one shot to the next. " +
+  "The logo reference image is the sole authority for the logo's colors.";
 
 // Appended to EVERY prompt, right after LOGO_FIDELITY. The customer uploads a
 // photo of THEIR actual product, and the whole point is that the mockup shows
@@ -55,45 +63,39 @@ const PRODUCT_REFERENCE =
   "here. Ignore the product reference photo's background, framing, camera angle, and lighting; reproduce " +
   "only the product itself.";
 
-// FALLBACK ONLY — used when the client couldn't extract a logo palette (e.g.
-// canvas read failure). Keeps the logo in its exact reference colors, identical
-// across shots, and explicitly forbids any contrast-based recoloring: the logo
-// stays true-to-color even when it closely matches the product.
-const COLOR_FIDELITY_FALLBACK =
-  " LOGO COLORS: Render the logo in its exact reference colors, and render those colors IDENTICALLY in " +
-  "every shot — no hue shift, tint, brightness change, thread/ink substitution, or reinterpretation from " +
-  "one shot to the next. Even if a logo color closely matches the product's color, keep the logo in its " +
-  "true reference colors — do NOT recolor any part of it to a contrasting color to make it stand out. " +
-  "Reproduce the logo colors exactly as shown, regardless of the product's color.";
-
-// ---------------------------------------------------------------------------
-// DETERMINISTIC COLOR SPEC — the fix for cross-shot color drift.
-// The client (studio/page.js, via colorUtils.js) extracts the logo's exact hex
-// palette and sends it here. We hand every shot the identical closed list of
-// exact hexes so the logo renders in the same colors across all shots. No
-// contrast substitution happens: the logo's true colors are preserved even
-// when they closely match the product — that safeguard was removed on purpose.
-// ---------------------------------------------------------------------------
-
-// Build the closed color-spec clause from the client-extracted logo palette.
-// Returns null when the palette is missing/invalid, so the caller can fall back
-// to COLOR_FIDELITY_FALLBACK.
-function colorSpecClause(logoColors) {
-  if (!Array.isArray(logoColors) || !logoColors.length) return null;
-
-  const lines = logoColors.map(({ hex }) => hex).join("; ");
-
+// Variant of PRODUCT_REFERENCE used when the customer picked a preset garment
+// color (Apollo Studio's color selector). Everything about the product is kept
+// identical to the reference photo EXCEPT its base color, which is re-dyed to
+// the chosen color. Applied identically across every shot so the recolored
+// product stays consistent. Falls back to PRODUCT_REFERENCE when no color is set.
+function productReferenceClause(garmentColor) {
+  if (!garmentColor) return PRODUCT_REFERENCE;
   return (
-    " EXACT LOGO COLORS (final — do not recompute): The logo consists of exactly these colors: " +
-    `${lines}. Render each color EXACTLY as specified above, in EVERY shot, with zero variation between ` +
-    "shots — the same hex value must appear in the product, close-up, and on-model images alike. Never " +
-    "substitute, tint, lighten, darken, blend, add a gradient to, or otherwise reinterpret any of these " +
-    "colors. Even if a color closely matches the product's color, keep it EXACTLY as specified — do NOT " +
-    "swap it for a contrasting color to make the logo stand out. Render the logo in its true colors " +
-    "regardless of the product color; this palette is final, so do not re-derive or re-judge it from the " +
-    "logo reference image."
+    " PRODUCT REFERENCE: The FIRST reference image is the logo artwork. The SECOND reference image is a " +
+    "photo of the customer's ACTUAL product. The mockup must show THIS exact product — identical product " +
+    "type, shape, silhouette, material, texture, construction details, seams, hardware, and trims. Do NOT " +
+    "substitute a different or generic product. PRODUCT COLOR OVERRIDE (critical): the product reference " +
+    "photo shows the product in its ORIGINAL color, which is WRONG for this order — completely ignore and " +
+    "discard that original color. Re-dye the entire product body to " +
+    `${garmentColor.name} (approximately ${garmentColor.hex}) instead. This is the ONE AND ONLY correct ` +
+    "product color: apply it evenly and realistically across the whole product, preserving the fabric's " +
+    "natural shading, highlights, folds, and material texture. Under NO circumstances render the product " +
+    `in the original color from the reference photo — every shot (product, close-up, and on-model) must ` +
+    `show the product in ${garmentColor.name} (${garmentColor.hex}), identical from shot to shot. Change ` +
+    "ONLY the product's base color; keep its shape, construction, and the logo decoration exactly as " +
+    "described. Ignore the product reference photo's background, framing, camera angle, and lighting; " +
+    "reproduce only the product itself."
   );
 }
+
+// COLOR NOTE — the logo PNG is the single source of truth for logo color. The
+// prompt intentionally carries NO hex list and NO anti-inversion wording: naming
+// a black<->white flip made the image model perform it, and the deterministic hex
+// spec that used to live here couldn't stop the model's visibility bias anyway.
+// Cross-shot color consistency is now carried by LOGO_COLOR_FIDELITY (positive)
+// plus the DECORATED_MATCH image chaining below. `logoColors` is still accepted
+// in the request (for screen-print pricing on the client) but no longer feeds the
+// prompt.
 
 // Appended to EVERY prompt. Every shot must show the SAME physical item —
 // one product, decorated once, photographed from different distances.
@@ -199,6 +201,16 @@ const METHODS = {
     "never a glass-flat decal. Otherwise, on a flat woven garment, keep it a clean opaque spot-color " +
     "print integrated into the weave.",
 };
+
+// Appended to every on-model shot: the model must be fully, appropriately
+// clothed. Guards against the model being rendered undressed/underdressed —
+// especially when the product itself doesn't cover the body (a hat, bag, or
+// accessory), where the model would otherwise be left bare.
+const MODEL_ATTIRE =
+  " The model is fully and appropriately clothed in complete, tasteful everyday attire, with all " +
+  "clothing modestly covering the body — never shirtless, undressed, or shown in underwear or swimwear " +
+  "only. If the product itself does not cover the torso or legs (for example a hat, cap, beanie, bag, or " +
+  "other accessory), the model still wears normal complete clothing on the rest of the body.";
 
 // Short one-line method note for the on-model shot. The full METHODS blocks above
 // are macro/texture-focused and read wrong on a full-body lifestyle photo, so the
@@ -347,6 +359,7 @@ function buildPrompt(view, { method, placement, size, sceneOn, marker }) {
       METHOD_SHORT[method] +
       ` Natural relaxed pose, flattering studio lighting, ${background}, shallow depth of field, ` +
       "photorealistic." +
+      MODEL_ATTIRE +
       sizing +
       markerClause
     );
@@ -406,7 +419,7 @@ async function fetchWithRetry(url, init) {
   }
 }
 
-async function generateOne(view, prompt, references, seed, colorClause) {
+async function generateOne(view, prompt, references, seed, colorClause, productRef) {
   const res = await fetchWithRetry("https://openrouter.ai/api/v1/images", {
     method: "POST",
     headers: {
@@ -415,7 +428,7 @@ async function generateOne(view, prompt, references, seed, colorClause) {
     },
     body: JSON.stringify({
       model: MODEL,
-      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + PRODUCT_REFERENCE + colorClause,
+      prompt: prompt + PLACEMENT_LOCK + LOGO_FIDELITY + productRef + colorClause,
       seed,
       resolution: RESOLUTION,
       aspect_ratio: ASPECT_RATIO,
@@ -455,17 +468,30 @@ async function generateShotSet(views, opts, emit) {
   const baseRefs = opts.markerImage
     ? [opts.logo, opts.productImage, opts.markerImage]
     : [opts.logo, opts.productImage];
-  // Computed ONCE per request (not per shot) — every shot gets the identical
-  // color instruction, which is the whole point: no shot-to-shot judgment drift.
-  const colorClause = colorSpecClause(opts.logoColors) || COLOR_FIDELITY_FALLBACK;
+  // Every shot gets the identical, positive color instruction. The logo PNG is
+  // the sole color authority; the model makes no color decisions, so it never
+  // inverts. (See the COLOR NOTE near LOGO_COLOR_FIDELITY.)
+  const colorClause = LOGO_COLOR_FIDELITY;
+  // Product-reference clause is also fixed per request, so a chosen garment color
+  // recolors the product identically in every shot.
+  const productRef = productReferenceClause(opts.garmentColor);
+  // A short, blunt per-shot restatement of the target product color. Appended to
+  // EVERY shot's prompt (anchor and chained) when a garment color is chosen,
+  // because the original-colored product photo is still reference #2 and a shot
+  // will otherwise sometimes revert to the photo's original color.
+  const colorLock = opts.garmentColor
+    ? ` PRODUCT COLOR LOCK: In this shot the product itself must be ${opts.garmentColor.name} ` +
+      `(${opts.garmentColor.hex}), NOT the original color shown in the product reference photo. This ` +
+      `applies to the whole product body and must be the same in every shot.`
+    : "";
   const safe = (view, prompt, references) =>
-    generateOne(view, prompt, references, seed, colorClause).catch((e) => {
+    generateOne(view, prompt, references, seed, colorClause, productRef).catch((e) => {
       const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : String(e?.message ?? e);
       return { view, ok: false, error: detail };
     });
 
   const [anchorView, ...restViews] = views;
-  const anchor = await safe(anchorView, buildPrompt(anchorView, opts), baseRefs);
+  const anchor = await safe(anchorView, buildPrompt(anchorView, opts) + colorLock, baseRefs);
   emit(anchor);
   const anchorUrl = anchor.ok && anchor.images?.[0] ? `data:image/png;base64,${anchor.images[0]}` : null;
 
@@ -473,7 +499,7 @@ async function generateShotSet(views, opts, emit) {
     restViews.map((view) =>
       safe(
         view,
-        buildPrompt(view, opts) + (anchorUrl ? DECORATED_MATCH : ""),
+        buildPrompt(view, opts) + (anchorUrl ? DECORATED_MATCH : "") + colorLock,
         anchorUrl ? [...baseRefs, anchorUrl] : baseRefs
       ).then(emit)
     )
@@ -488,7 +514,7 @@ export async function POST(req) {
 
     const {
       logo, productImage, method, views, placement, size, scene, marker, markerImage,
-      logoColors, productColor,
+      garmentColor,
     } = await req.json();
     if (!logo) return Response.json({ error: "No logo provided" }, { status: 400 });
     if (!productImage) return Response.json({ error: "No product photo provided" }, { status: 400 });
@@ -501,16 +527,22 @@ export async function POST(req) {
       typeof markerImage === "string" &&
       [marker.x, marker.y, marker.r].every((n) => typeof n === "number" && isFinite(n));
 
-    // Client-extracted logo palette (see colorUtils.js) — loosely validated and
-    // silently dropped if malformed, so a bad payload just falls back to
-    // COLOR_FIDELITY_FALLBACK rather than erroring the whole request. The sampled
-    // productColor is still accepted for backward-compat but no longer used now
-    // that contrast substitution has been removed.
+    // NOTE: the request may still carry `logoColors` / `productColor` (the client
+    // sends them for screen-print pricing), but the prompt no longer uses them —
+    // the logo PNG is the sole color authority. See the COLOR NOTE above.
     const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
-    const cleanLogoColors = Array.isArray(logoColors)
-      ? logoColors.filter((c) => c && typeof c.hex === "string" && HEX_RE.test(c.hex))
-      : [];
-    const cleanProductColor = typeof productColor === "string" && HEX_RE.test(productColor) ? productColor : null;
+
+    // Optional preset garment color (Apollo Studio). Needs a valid hex and a
+    // non-empty display name to be used; anything malformed is dropped so the
+    // product keeps its reference-photo color.
+    const cleanGarmentColor =
+      garmentColor &&
+      typeof garmentColor.hex === "string" &&
+      HEX_RE.test(garmentColor.hex) &&
+      typeof garmentColor.name === "string" &&
+      garmentColor.name.trim()
+        ? { name: garmentColor.name.trim().slice(0, 40), hex: garmentColor.hex }
+        : null;
 
     // Requested shots, in canonical order; default to all three.
     const requested = Array.isArray(views) && views.length ? views : VIEW_ORDER;
@@ -528,8 +560,7 @@ export async function POST(req) {
       sceneOn: scene,
       marker: hasMarker ? marker : null,
       markerImage: hasMarker ? markerImage : null,
-      logoColors: cleanLogoColors.length ? cleanLogoColors : null,
-      productColor: cleanProductColor,
+      garmentColor: cleanGarmentColor,
     };
 
     // Stream results as newline-delimited JSON, one line per shot, as soon as
